@@ -1,33 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, Tabs } from 'expo-router';
-import { colors, spacing } from '@/components/theme';
-import { IconButton } from '@/components/ui';
-import { useData } from '@/context/DataProvider';
-
-function AccountButton() {
-  const { isGuest } = useData();
-  return (
-    <IconButton
-      name={isGuest ? 'person-circle-outline' : 'person-circle'}
-      label="Conta"
-      color={isGuest ? colors.muted : colors.primary}
-      size={28}
-      onPress={() => router.push('/account')}
-    />
-  );
-}
-
+import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { colors } from '@/components/theme';
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        headerStyle: { backgroundColor: colors.card },
-        headerTitleStyle: { fontWeight: '700' },
-        headerRight: () => <AccountButton />,
-        headerRightContainerStyle: { paddingRight: spacing.lg },
-        sceneStyle: { backgroundColor: colors.background },
+        tabBarStyle: { backgroundColor: colors.card, borderTopColor: colors.border },
+        tabBarLabelStyle: { fontWeight: '600' },
+        // Sem cabeçalho, o conteúdo começa abaixo da barra de status.
+        sceneStyle: { backgroundColor: colors.background, paddingTop: insets.top },
       }}
     >
       <Tabs.Screen
@@ -49,6 +36,15 @@ export default function TabLayout() {
         options={{
           title: 'Semana',
           tabBarIcon: ({ color, size }) => <Ionicons name="calendar-outline" size={size} color={color as string} />,
+        }}
+      />
+      <Tabs.Screen
+        name="perfil"
+        options={{
+          title: 'Perfil',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'person-circle' : 'person-circle-outline'} size={size} color={color as string} />
+          ),
         }}
       />
     </Tabs>

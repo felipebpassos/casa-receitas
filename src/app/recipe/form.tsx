@@ -138,9 +138,9 @@ function RecipeForm() {
           <Text style={styles.label}>Ingredientes *</Text>
           {rows.map((row) =>
             row.subRecipeId ? (
-              <View key={row.key} style={[styles.card, { gap: spacing.sm, borderColor: colors.primary }]}>
+              <View key={row.key} style={[styles.card, { gap: spacing.sm, borderColor: colors.success }]}>
                 <View style={styles.row}>
-                  <Ionicons name="book-outline" size={18} color={colors.primary} />
+                  <Ionicons name="book-outline" size={18} color={colors.success} />
                   <Text style={[styles.subtitle, { flex: 1 }]}>{row.name}</Text>
                   <IconButton name="trash-outline" label={`Remover ${row.name}`} color={colors.danger} onPress={() => removeRow(row.key)} />
                 </View>

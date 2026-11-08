@@ -90,7 +90,7 @@ export default function WeekScreen() {
             <Text style={[styles.muted, { paddingVertical: spacing.md }]}>Adicione receitas aos dias para ver o que precisa comprar.</Text>
           ) : needs.length === 0 ? (
             <View style={[styles.row, { paddingVertical: spacing.md }]}>
-              <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
               <Text style={styles.body}>Você tem tudo para as receitas da semana!</Text>
             </View>
           ) : (
@@ -132,11 +132,11 @@ export default function WeekScreen() {
             elevation: 6,
           }}
         >
-          <Text style={{ color: '#fff', flex: 1 }} numberOfLines={1}>
+          <Text style={{ color: colors.background, flex: 1 }} numberOfLines={1}>
             {lastBought.name} agora está na Despensa
           </Text>
           <Pressable onPress={undo} hitSlop={10}>
-            <Text style={{ color: '#A5D6A7', fontWeight: '700' }}>DESFAZER</Text>
+            <Text style={{ color: '#F2B596', fontWeight: '700' }}>DESFAZER</Text>
           </Pressable>
         </View>
       )}

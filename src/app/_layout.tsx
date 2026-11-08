@@ -1,10 +1,16 @@
+import { Lora_400Regular, Lora_500Medium, Lora_600SemiBold, Lora_700Bold, useFonts } from '@expo-google-fonts/lora';
 import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { colors, spacing } from '@/components/theme';
+import { colors, fonts, spacing } from '@/components/theme';
 import { Button, styles } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthProvider';
 import { DataProvider, useData } from '@/context/DataProvider';
+
+// Segura a splash até as fontes carregarem.
+SplashScreen.preventAutoHideAsync();
 
 function LoadingView({ status, overlay }: { status: string | null; overlay?: boolean }) {
   return (
@@ -12,7 +18,7 @@ function LoadingView({ status, overlay }: { status: string | null; overlay?: boo
       style={[
         styles.screen,
         styles.empty,
-        overlay && { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(250,250,247,0.95)' },
+        overlay && { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(249,245,234,0.95)' },
       ]}
     >
       <ActivityIndicator color={colors.primary} size="large" />
@@ -43,8 +49,10 @@ function Gate() {
     <>
       <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.card },
+        headerStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
         headerTintColor: colors.text,
+        headerTitleStyle: { fontFamily: fonts.serifSemiBold },
         contentStyle: { backgroundColor: colors.background },
       }}
     >
@@ -59,6 +67,16 @@ function Gate() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({ Lora_400Regular, Lora_500Medium, Lora_600SemiBold, Lora_700Bold });
+  const fontsReady = fontsLoaded || !!fontError;
+
+  useEffect(() => {
+    if (fontsReady) SplashScreen.hide();
+  }, [fontsReady]);
+
+  // Se a fonte falhar, segue com a do sistema em vez de travar o app.
+  if (!fontsReady) return null;
+
   return (
     <AuthProvider>
       <StatusBar style="dark" />

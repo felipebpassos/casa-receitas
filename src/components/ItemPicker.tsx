@@ -96,7 +96,7 @@ export function ItemPicker({
           ItemSeparatorComponent={Separator}
           renderItem={({ item }) => (
             <Row onPress={() => { setQuery(''); onPickRecipe(item); }}>
-              <Ionicons name="book-outline" size={18} color={colors.primary} />
+              <Ionicons name="book-outline" size={18} color={colors.success} />
               <Text style={[styles.body, { flex: 1 }]}>{item.name}</Text>
             </Row>
           )}

@@ -51,7 +51,7 @@ export default function RecipesScreen() {
             opacity: pressed ? 0.8 : 1,
           })}
         >
-          <Ionicons name="add" size={30} color="#fff" />
+          <Ionicons name="add" size={30} color={colors.onPrimary} />
         </Pressable>
       )}
     </View>
@@ -115,7 +115,7 @@ function RecipeCard({ recipe, missing }: { recipe: Recipe; missing: number }) {
         </Text>
       ) : null}
       <View style={styles.row}>
-        <Ionicons name={missing === 0 ? 'checkmark-circle' : 'cart-outline'} size={14} color={missing === 0 ? colors.primary : colors.accent} />
+        <Ionicons name={missing === 0 ? 'checkmark-circle' : 'cart-outline'} size={14} color={missing === 0 ? colors.success : colors.accent} />
         <Text style={[styles.muted, { flex: 1 }]}>
           {missing === 0 ? 'Tem tudo em casa' : `Falta${missing > 1 ? 'm' : ''} ${missing} ite${missing > 1 ? 'ns' : 'm'}`}
           {recipe.originAuthorName ? ` · de ${recipe.originAuthorName}` : ''}

@@ -12,7 +12,7 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
-import { colors, radius, spacing } from './theme';
+import { colors, fonts, radius, spacing } from './theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -58,7 +58,7 @@ export function Button({
 }
 
 const buttonVariants = {
-  primary: { bg: colors.primary, fg: '#fff', border: colors.primary },
+  primary: { bg: colors.primary, fg: colors.onPrimary, border: colors.primary },
   secondary: { bg: colors.card, fg: colors.primary, border: colors.primary },
   danger: { bg: colors.card, fg: colors.danger, border: colors.danger },
   ghost: { bg: 'transparent', fg: colors.primary, border: 'transparent' },
@@ -150,7 +150,7 @@ export function Segmented<T extends string>({
 export function Checkbox({ checked }: { checked: boolean }) {
   return (
     <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-      {checked && <Ionicons name="checkmark" size={16} color="#fff" />}
+      {checked && <Ionicons name="checkmark" size={16} color={colors.onPrimary} />}
     </View>
   );
 }
@@ -188,8 +188,8 @@ export function ChipSelect({ options, value, onChange }: { options: readonly str
 }
 
 export function Badge({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'success' | 'accent' }) {
-  const bg = tone === 'success' ? colors.primaryLight : tone === 'accent' ? '#FFF3E0' : '#EEEEEE';
-  const fg = tone === 'success' ? colors.primary : tone === 'accent' ? colors.accent : colors.muted;
+  const bg = tone === 'success' ? colors.successLight : tone === 'accent' ? colors.accentLight : colors.surface;
+  const fg = tone === 'success' ? colors.success : tone === 'accent' ? colors.accent : colors.muted;
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       <Text style={[styles.badgeText, { color: fg }]}>{label}</Text>
@@ -233,8 +233,8 @@ export const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
   },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text },
-  subtitle: { fontSize: 16, fontWeight: '600', color: colors.text },
+  title: { fontSize: 24, fontFamily: fonts.serifBold, color: colors.text },
+  subtitle: { fontSize: 17, fontFamily: fonts.serifSemiBold, color: colors.text },
   body: { fontSize: 15, color: colors.text, lineHeight: 22 },
   muted: { fontSize: 13, color: colors.muted },
   label: { fontSize: 13, fontWeight: '600', color: colors.muted, textTransform: 'uppercase' },
@@ -271,7 +271,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: colors.text },
-  segmented: { flexDirection: 'row', backgroundColor: '#EDEDED', borderRadius: radius.md, padding: 3 },
+  segmented: { flexDirection: 'row', backgroundColor: colors.surface, borderRadius: radius.md, padding: 3 },
   segment: { flex: 1, flexDirection: 'row', gap: 10, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
   segmentActive: { backgroundColor: colors.card, elevation: 1 },
   segmentText: { fontSize: 14, color: colors.muted, fontWeight: '500' },
@@ -285,7 +285,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxChecked: { backgroundColor: colors.primary, borderColor: colors.primary },
+  checkboxChecked: { backgroundColor: colors.success, borderColor: colors.success },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -300,11 +300,11 @@ export const styles = StyleSheet.create({
   },
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { fontSize: 14, color: colors.text, flexShrink: 1 },
-  chipTextSelected: { color: '#fff', fontWeight: '600' },
+  chipTextSelected: { color: colors.onPrimary, fontWeight: '600' },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: radius.pill },
   badgeText: { fontSize: 12, fontWeight: '600' },
   empty: { alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
-  emptyTitle: { fontSize: 16, fontWeight: '600', color: colors.muted, textAlign: 'center' },
+  emptyTitle: { fontSize: 17, fontFamily: fonts.serifSemiBold, color: colors.text, textAlign: 'center' },
   emptySubtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
   error: {
     flexDirection: 'row',

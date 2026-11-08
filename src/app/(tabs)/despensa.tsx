@@ -95,7 +95,7 @@ export default function PantryScreen() {
             ]}
           >
             <Checkbox checked={item.has} />
-            {item.kind === 'recipe' && <Ionicons name="book-outline" size={16} color={colors.primary} />}
+            {item.kind === 'recipe' && <Ionicons name="book-outline" size={16} color={colors.success} />}
             <Text style={[styles.body, { flex: 1 }, !item.has && { color: colors.muted }]}>{item.name}</Text>
             {item.custom && <Badge label="seu" tone="accent" />}
           </Pressable>

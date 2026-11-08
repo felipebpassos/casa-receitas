@@ -24,7 +24,7 @@ export function ModalScreen({
             <View
               style={[
                 styles.row,
-                { padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card },
+                { padding: spacing.lg, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.background },
               ]}
             >
               <IconButton name="close" label="Fechar" color={colors.text} onPress={onClose} />

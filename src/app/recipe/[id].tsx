@@ -163,10 +163,10 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
         ) : null}
 
         {/* O que comprar */}
-        <View style={[styles.card, { gap: spacing.sm, borderColor: needs.length ? colors.accent : colors.primary }]}>
+        <View style={[styles.card, { gap: spacing.sm, borderColor: needs.length ? colors.accent : colors.success }]}>
           {needs.length === 0 ? (
             <View style={styles.row}>
-              <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
+              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
               <Text style={styles.subtitle}>Você tem tudo em casa!</Text>
             </View>
           ) : (
@@ -193,7 +193,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
                   onPress={() => sub && router.push({ pathname: '/recipe/[id]', params: { id: item.subRecipeId! } })}
                   style={styles.row}
                 >
-                  <Ionicons name={has ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={has ? colors.primary : colors.border} />
+                  <Ionicons name={has ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={has ? colors.success : colors.border} />
                   <Text style={[styles.body, { flex: 1, color: colors.primary, fontWeight: '600' }]}>{sub?.name ?? 'Receita indisponível'}</Text>
                   <Text style={styles.muted}>{formatQuantity(item.quantity, item.unit) || 'receita'}</Text>
                   <Ionicons name="chevron-forward" size={16} color={colors.muted} />
@@ -203,7 +203,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
             const has = ctx.hasIngredient(item.ingredientId!);
             return (
               <View key={item.id} style={styles.row}>
-                <Ionicons name={has ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={has ? colors.primary : colors.border} />
+                <Ionicons name={has ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={has ? colors.success : colors.border} />
                 <Text style={[styles.body, { flex: 1 }]}>{ctx.ingredientName(item.ingredientId!)}</Text>
                 <Text style={styles.muted}>{formatQuantity(item.quantity, item.unit)}</Text>
               </View>
