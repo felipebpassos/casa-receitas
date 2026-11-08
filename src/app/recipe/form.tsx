@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { ItemPicker } from '@/components/ItemPicker';
 import { colors, spacing } from '@/components/theme';
-import { Button, ChipSelect, Field, IconButton, Input, styles } from '@/components/ui';
+import { Button, ChipSelect, EmptyState, Field, IconButton, Input, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
 import { newId, nowIso } from '@/lib/ids';
 import { allowedSubRecipes, UNITS } from '@/lib/shopping';
@@ -36,6 +36,16 @@ const toRows = (recipe: Recipe | undefined, nameOf: (r: Recipe['items'][number])
   }));
 
 export default function RecipeFormScreen() {
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const { getRecipe } = useData();
+  // Receitas salvas de outras pessoas são somente leitura.
+  if (id && getRecipe(id)?.originRecipeId) {
+    return <EmptyState icon="lock-closed-outline" title="Receita somente leitura" subtitle="Receitas salvas de outras pessoas não podem ser editadas." />;
+  }
+  return <RecipeForm />;
+}
+
+function RecipeForm() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const data = useData();
   const existing = id ? data.getRecipe(id) : undefined;
@@ -191,7 +201,7 @@ export default function RecipeFormScreen() {
 
 function PublicSwitch({ isGuest, isCopy, value, onChange }: { isGuest: boolean; isCopy: boolean; value: boolean; onChange: (v: boolean) => void }) {
   if (isCopy) {
-    return <Text style={styles.muted}>Receitas salvas de outras pessoas ficam só na sua coleção e não podem ser publicadas.</Text>;
+    return <Text style={styles.muted}>Receitas salvas de outras pessoas ficam só no seu caderno de receitas e não podem ser publicadas.</Text>;
   }
   if (isGuest) {
     return (

@@ -53,6 +53,8 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   const [pickingDay, setPickingDay] = useState(false);
   const [busy, setBusy] = useState(false);
   const isPublicView = !!tree;
+  // Receita salva de outra pessoa: fica na coleção, mas somente leitura.
+  const isSavedCopy = !isPublicView && !!recipe.originRecipeId;
   const savedCopy = tree ? data.findCopyOf(tree.root.id) : undefined;
 
   // Contexto do cálculo: a coleção, ou a árvore da receita pública + sua despensa.
@@ -90,7 +92,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
     if (await data.addMealPlan(date, recipeId)) {
       Alert.alert(
         'Adicionada à semana',
-        `${recipe.name} foi planejada para ${weekdayName(date).toLowerCase()}, ${formatShort(date)}.${isPublicView && !savedCopy ? '\n\nEla também foi salva na sua coleção.' : ''}`,
+        `${recipe.name} foi planejada para ${weekdayName(date).toLowerCase()}, ${formatShort(date)}.${isPublicView && !savedCopy ? '\n\nEla também foi salva no seu caderno de receitas.' : ''}`,
       );
     }
   };
@@ -100,6 +102,18 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Excluir',
+        style: 'destructive',
+        onPress: async () => {
+          if (await data.deleteRecipe(recipe.id)) router.back();
+        },
+      },
+    ]);
+
+  const confirmRemove = () =>
+    Alert.alert('Remover do caderno', `Remover "${recipe.name}" do seu caderno de receitas? Ela também sai da sua semana. Você pode salvá-la de novo em Explorar.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Remover',
         style: 'destructive',
         onPress: async () => {
           if (await data.deleteRecipe(recipe.id)) router.back();
@@ -124,10 +138,10 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
         {/* Ações principais */}
         {isPublicView ? (
           savedCopy ? (
-            <Button title="Na sua coleção · abrir" icon="bookmark" variant="secondary" onPress={() => router.replace({ pathname: '/recipe/[id]', params: { id: savedCopy.id } })} />
+            <Button title="No seu caderno de receitas · abrir" icon="bookmark" variant="secondary" onPress={() => router.replace({ pathname: '/recipe/[id]', params: { id: savedCopy.id } })} />
           ) : (
             <Button
-              title="Salvar na coleção"
+              title="Salvar no caderno"
               icon="bookmark-outline"
               loading={busy}
               onPress={async () => {
@@ -205,7 +219,8 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
           </View>
         ) : null}
 
-        {!isPublicView && (
+        {isSavedCopy && <Button title="Remover do caderno" icon="bookmark" variant="ghost" onPress={confirmRemove} />}
+        {!isPublicView && !isSavedCopy && (
           <View style={{ gap: spacing.md }}>
             <Button title="Editar receita" icon="create-outline" variant="secondary" onPress={() => router.push({ pathname: '/recipe/form', params: { id: recipe.id } })} />
             <Button title="Excluir receita" icon="trash-outline" variant="danger" onPress={confirmDelete} />

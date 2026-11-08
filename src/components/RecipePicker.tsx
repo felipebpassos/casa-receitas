@@ -61,7 +61,7 @@ export function RecipePicker({
         )}
         ListEmptyComponent={
           <Text style={[styles.muted, { textAlign: 'center', padding: spacing.xl }]}>
-            {recipes.length === 0 ? 'Sua coleção está vazia. Cadastre ou salve receitas na aba Receitas.' : 'Nenhuma receita encontrada.'}
+            {recipes.length === 0 ? 'Seu caderno de receitas está vazio. Cadastre ou salve receitas na aba Receitas.' : 'Nenhuma receita encontrada.'}
           </Text>
         }
       />

@@ -120,7 +120,7 @@ export function Segmented<T extends string>({
   value,
   onChange,
 }: {
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; icon?: IconName }[];
   value: T;
   onChange: (v: T) => void;
 }) {
@@ -129,8 +129,17 @@ export function Segmented<T extends string>({
       {options.map((o) => {
         const active = o.value === value;
         return (
-          <Pressable key={o.value} onPress={() => onChange(o.value)} style={[styles.segment, active && styles.segmentActive]}>
-            <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{o.label}</Text>
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: active }}
+            style={[styles.segment, active && styles.segmentActive]}
+          >
+            {o.icon && <Ionicons name={o.icon} size={16} color={active ? colors.primary : colors.muted} />}
+            <Text style={[styles.segmentText, active && styles.segmentTextActive]} numberOfLines={1}>
+              {o.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -263,7 +272,7 @@ export const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, paddingVertical: 10, fontSize: 15, color: colors.text },
   segmented: { flexDirection: 'row', backgroundColor: '#EDEDED', borderRadius: radius.md, padding: 3 },
-  segment: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: radius.sm },
+  segment: { flex: 1, flexDirection: 'row', gap: 10, paddingVertical: 8, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
   segmentActive: { backgroundColor: colors.card, elevation: 1 },
   segmentText: { fontSize: 14, color: colors.muted, fontWeight: '500' },
   segmentTextActive: { color: colors.text, fontWeight: '700' },

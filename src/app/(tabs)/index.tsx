@@ -11,10 +11,10 @@ import { computeNeeds, normalizeName } from '@/lib/shopping';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import type { PublicRecipeSummary, Recipe } from '@/lib/types';
 
-type Tab = 'mine' | 'saved' | 'explore';
+type Tab = 'collection' | 'explore';
 
 export default function RecipesScreen() {
-  const [tab, setTab] = useState<Tab>('mine');
+  const [tab, setTab] = useState<Tab>('collection');
   const [query, setQuery] = useState('');
 
   return (
@@ -25,16 +25,15 @@ export default function RecipesScreen() {
           value={tab}
           onChange={setTab}
           options={[
-            { value: 'mine', label: 'Minhas' },
-            { value: 'saved', label: 'Salvas' },
-            { value: 'explore', label: 'Explorar' },
+            { value: 'collection', label: 'Meu caderno', icon: 'book-outline' },
+            { value: 'explore', label: 'Explorar', icon: 'compass-outline' },
           ]}
         />
       </View>
 
-      {tab === 'explore' ? <ExploreList query={query} /> : <CollectionList query={query} saved={tab === 'saved'} />}
+      {tab === 'explore' ? <ExploreList query={query} /> : <CollectionList query={query} />}
 
-      {tab !== 'explore' && (
+      {tab === 'collection' && (
         <Pressable
           onPress={() => router.push('/recipe/form')}
           accessibilityLabel="Nova receita"
@@ -59,15 +58,13 @@ export default function RecipesScreen() {
   );
 }
 
-/** Minhas (criadas por você) ou Salvas (cópias de receitas de outras pessoas). */
-function CollectionList({ query, saved }: { query: string; saved: boolean }) {
+/** Meu caderno: receitas criadas por você + salvas de outras pessoas (estas somente leitura). */
+function CollectionList({ query }: { query: string }) {
   const { recipes, ingredientName, getRecipe, needsContext } = useData();
 
   const list = useMemo(() => {
     const q = normalizeName(query);
-    return recipes
-      .filter((r) => (saved ? r.originRecipeId : !r.originRecipeId))
-      .filter(
+    return recipes.filter(
         (r) =>
           !q ||
           normalizeName(r.name).includes(q) ||
@@ -76,7 +73,7 @@ function CollectionList({ query, saved }: { query: string; saved: boolean }) {
             return normalizeName(name).includes(q);
           }),
       );
-  }, [recipes, query, saved, ingredientName, getRecipe]);
+  }, [recipes, query, ingredientName, getRecipe]);
 
   return (
     <FlatList
@@ -88,10 +85,12 @@ function CollectionList({ query, saved }: { query: string; saved: boolean }) {
       ListEmptyComponent={
         query ? (
           <EmptyState icon="search" title="Nenhuma receita encontrada" subtitle={`Nada com "${query}" no nome ou nos ingredientes.`} />
-        ) : saved ? (
-          <EmptyState icon="bookmark-outline" title="Nenhuma receita salva" subtitle="Em Explorar, abra uma receita de outra pessoa e toque em Salvar na coleção." />
         ) : (
-          <EmptyState icon="book-outline" title="Nenhuma receita ainda" subtitle="Toque em + para cadastrar a primeira." />
+          <EmptyState
+            icon="book-outline"
+            title="Seu caderno de receitas está vazio"
+            subtitle="Toque em + para cadastrar uma receita, ou salve receitas de outras pessoas em Explorar."
+          />
         )
       }
     />
@@ -108,7 +107,7 @@ function RecipeCard({ recipe, missing }: { recipe: Recipe; missing: number }) {
         <Text style={[styles.subtitle, { flex: 1 }]} numberOfLines={1}>
           {recipe.name}
         </Text>
-        {recipe.isPublic && <Badge label="pública" tone="success" />}
+        {recipe.originRecipeId ? <Badge label="salva" /> : recipe.isPublic && <Badge label="pública" tone="success" />}
       </View>
       {recipe.description ? (
         <Text style={styles.muted} numberOfLines={2}>
