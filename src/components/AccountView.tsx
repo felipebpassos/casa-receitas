@@ -4,6 +4,7 @@ import { Alert, Image, ScrollView, Text, View } from 'react-native';
 import { colors, spacing } from '@/components/theme';
 import { Button, Field, Input, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
+import { signInWithGoogle } from '@/lib/googleAuth';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 type Mode = 'signin' | 'signup';
@@ -66,6 +67,18 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const google = async () => {
+    setGoogleLoading(true);
+    try {
+      if (await signInWithGoogle()) onDone?.();
+    } catch (e) {
+      Alert.alert('Não foi possível entrar com Google', (e as Error).message);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const submit = async () => {
     if (!email.trim() || password.length < 6) {
@@ -101,12 +114,8 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
 
   return (
     <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }} keyboardShouldPersistTaps="handled">
-      <View style={{ alignItems: 'center', gap: spacing.sm }}>
+      <View style={{ alignItems: 'center' }}>
         <Image source={require('../../assets/logo.png')} style={{ width: 180, height: 175 }} resizeMode="contain" accessibilityLabel="Receitas de Casa" />
-        <Text style={styles.subtitle}>Você está usando sem conta</Text>
-        <Text style={[styles.muted, { textAlign: 'center', fontSize: 14 }]}>
-          Seus dados estão salvos só neste celular. Entre para fazer backup, usar em outro aparelho e publicar receitas. Tudo o que você já cadastrou vai junto para a conta.
-        </Text>
       </View>
 
       <Segmented<Mode>
@@ -119,18 +128,30 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
       />
 
       {mode === 'signup' && (
-        <Field label="Seu nome">
-          <Input value={name} onChangeText={setName} placeholder="Aparece nas receitas que você publicar" autoCapitalize="words" />
+        <Field label="Nome">
+          <Input value={name} onChangeText={setName} placeholder="Digite seu nome" autoCapitalize="words" />
         </Field>
       )}
       <Field label="E-mail">
-        <Input value={email} onChangeText={setEmail} placeholder="voce@email.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+        <Input value={email} onChangeText={setEmail} placeholder="seu@email.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
       </Field>
       <Field label="Senha">
         <Input value={password} onChangeText={setPassword} placeholder="Mínimo de 6 caracteres" secureTextEntry autoCapitalize="none" />
       </Field>
 
-      <Button title={mode === 'signin' ? 'Entrar' : 'Criar conta'} onPress={submit} loading={loading} />
+      <Button title={mode === 'signin' ? 'Entrar' : 'Criar conta'} onPress={submit} loading={loading} disabled={googleLoading} />
+
+      <View style={styles.row}>
+        <View style={[styles.separator, { flex: 1 }]} />
+        <Text style={styles.muted}>ou</Text>
+        <View style={[styles.separator, { flex: 1 }]} />
+      </View>
+
+      <Button title="Continuar com Google" icon="logo-google" variant="neutral" onPress={google} loading={googleLoading} disabled={loading} />
+
+      <Text style={[styles.muted, { textAlign: 'center', marginTop: spacing.sm }]}>
+        Entre na sua conta para salvar e compartilhar suas receitas.
+      </Text>
     </ScrollView>
   );
 }

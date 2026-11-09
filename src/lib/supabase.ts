@@ -14,7 +14,8 @@ export const supabase = createClient(supabaseUrl || 'https://not-configured.supa
     storage: AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // Na web, o login com Google volta para a página com a sessão na URL.
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });
 

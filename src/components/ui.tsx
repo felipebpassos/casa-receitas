@@ -27,7 +27,7 @@ export function Button({
 }: {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'neutral';
   icon?: IconName;
   loading?: boolean;
   disabled?: boolean;
@@ -62,6 +62,7 @@ const buttonVariants = {
   secondary: { bg: colors.card, fg: colors.primary, border: colors.primary },
   danger: { bg: colors.card, fg: colors.danger, border: colors.danger },
   ghost: { bg: 'transparent', fg: colors.primary, border: 'transparent' },
+  neutral: { bg: colors.card, fg: colors.text, border: colors.border },
 };
 
 export function IconButton({

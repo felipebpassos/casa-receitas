@@ -2,8 +2,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/components/theme';
+import { useAuth } from '@/context/AuthProvider';
+
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { userId } = useAuth();
 
   return (
     <Tabs
@@ -41,7 +44,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="perfil"
         options={{
-          title: 'Perfil',
+          // Sem conta, a aba é o convite para entrar; com conta, é o perfil.
+          title: userId ? 'Perfil' : 'Entrar',
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'person-circle' : 'person-circle-outline'} size={size} color={color as string} />
           ),

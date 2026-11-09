@@ -55,6 +55,22 @@ EXPO_PUBLIC_SUPABASE_KEY=<PUBLISHABLE_KEY do db:status>
 npm start              # escaneie o QR code com o Expo Go no Android (mesma rede Wi-Fi)
 ```
 
+### Login com Google (opcional)
+
+O login abre o navegador, passa pelo Google e volta para o app (funciona no Expo Go, em builds e na web).
+
+1. No [Google Cloud](https://console.cloud.google.com/), em **APIs e serviços → Credenciais**, crie um **ID do cliente OAuth** do tipo **Aplicativo da Web**:
+   - URI de redirecionamento autorizado: `http://127.0.0.1:54321/auth/v1/callback` (local) e, na nuvem, `https://<ref-do-projeto>.supabase.co/auth/v1/callback`.
+   - Origem JavaScript autorizada (para a web): `http://localhost:8081`.
+2. Coloque o Client ID e o secret no `.env` (veja `.env.example`), mude `enabled = true` em `[auth.external.google]` no `supabase/config.toml` e reinicie: `npm run db:stop && npm run db:start`.
+3. O Google só aceita `http` em `localhost`, então o retorno passa por `127.0.0.1:54321`. No **emulador Android** (ou celular via USB), redirecione a porta antes de testar:
+   ```bash
+   adb reverse tcp:54321 tcp:54321
+   ```
+   No celular pelo Wi-Fi, sem USB, o login com Google só funciona com o Supabase na nuvem.
+
+Os destinos de retorno do app (`receitasdecasa://**`, `exp://**`, `http://localhost:8081/**`) já estão liberados em `additional_redirect_urls`.
+
 ### 3. Subir para o Supabase na nuvem (depois)
 
 1. Crie um projeto em <https://supabase.com> (plano gratuito).
@@ -64,7 +80,7 @@ npm start              # escaneie o QR code com o Expo Go no Android (mesma rede
    npx supabase link --project-ref <ref-do-projeto>
    npx supabase db push
    ```
-3. Em **Authentication → Sign In / Providers → Email**, decida se exige confirmação de e-mail.
+3. Em **Authentication → Sign In / Providers → Email**, decida se exige confirmação de e-mail. Para o Google, ative o provedor **Google** ali com o Client ID e o secret, e em **Authentication → URL Configuration** adicione `receitasdecasa://**` (e `exp://**` se for testar no Expo Go) às Redirect URLs.
 4. Troque o `.env` pela URL e chave *publishable* do projeto (botão **Connect**).
 
 Sem o `.env`, o app funciona só no modo local: receitas, despensa e semana funcionam; conta e biblioteca pública não.
