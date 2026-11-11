@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
+import { confirm } from '@/components/ConfirmDialog';
 import { DayPicker } from '@/components/DayPicker';
 import { NeedsList } from '@/components/NeedsList';
 import { colors, spacing } from '@/components/theme';
@@ -115,32 +116,30 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   };
 
   const confirmDelete = () =>
-    Alert.alert('Excluir receita', `Excluir "${recipe.name}"? Ela também sai da sua semana.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: async () => {
-          if (!(await data.deleteRecipe(recipe.id))) return;
-          toast.success('Receita excluída', recipe.name);
-          router.back();
-        },
+    confirm({
+      title: 'Excluir receita',
+      message: `Excluir "${recipe.name}"? Ela também sai da sua semana.`,
+      confirmText: 'Excluir',
+      destructive: true,
+      onConfirm: async () => {
+        if (!(await data.deleteRecipe(recipe.id))) return;
+        toast.success('Receita excluída', recipe.name);
+        router.back();
       },
-    ]);
+    });
 
   const confirmRemove = () =>
-    Alert.alert('Remover do caderno', `Remover "${recipe.name}" do seu caderno de receitas? Ela também sai da sua semana. Você pode salvá-la de novo em Explorar.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Remover',
-        style: 'destructive',
-        onPress: async () => {
-          if (!(await data.deleteRecipe(recipe.id))) return;
-          toast.success('Removida do caderno', recipe.name);
-          router.back();
-        },
+    confirm({
+      title: 'Remover do caderno',
+      message: `Remover "${recipe.name}" do seu caderno de receitas? Ela também sai da sua semana. Você pode salvá-la de novo em Explorar.`,
+      confirmText: 'Remover',
+      destructive: true,
+      onConfirm: async () => {
+        if (!(await data.deleteRecipe(recipe.id))) return;
+        toast.success('Removida do caderno', recipe.name);
+        router.back();
       },
-    ]);
+    });
 
   return (
     <>

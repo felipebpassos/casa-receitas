@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Alert, Image, Platform, ScrollView, Text, View } from 'react-native';
+import { Image, Platform, ScrollView, Text, View } from 'react-native';
+import { confirm } from '@/components/ConfirmDialog';
 import { colors, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
 import { Button, Field, Input, Segmented, styles } from '@/components/ui';
@@ -44,18 +45,17 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
           icon="log-out-outline"
           variant="danger"
           onPress={() =>
-            Alert.alert('Sair', 'Seus dados continuam salvos na conta. Neste celular, o app volta a funcionar sem conta.', [
-              { text: 'Cancelar', style: 'cancel' },
-              {
-                text: 'Sair',
-                style: 'destructive',
-                onPress: async () => {
-                  await signOut();
-                  toast.info('Você saiu da conta', 'Neste celular, o app volta a funcionar sem conta.');
-                  onDone?.();
-                },
+            confirm({
+              title: 'Sair',
+              message: 'Seus dados continuam salvos na conta. Neste celular, o app volta a funcionar sem conta.',
+              confirmText: 'Sair',
+              destructive: true,
+              onConfirm: async () => {
+                await signOut();
+                toast.info('Você saiu da conta', 'Neste celular, o app volta a funcionar sem conta.');
+                onDone?.();
               },
-            ])
+            })
           }
         />
       </ScrollView>

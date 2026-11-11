@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
+import { ConfirmHost } from '@/components/ConfirmDialog';
 import { ErrorView } from '@/components/ErrorState';
 import { ToastHost } from '@/components/Toast';
 import { colors, fonts } from '@/components/theme';
@@ -89,6 +90,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <DataProvider>
         <Gate />
+        <ConfirmHost />
         <ToastHost />
       </DataProvider>
     </AuthProvider>

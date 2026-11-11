@@ -27,7 +27,7 @@ export function Button({
 }: {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'neutral';
+  variant?: keyof typeof buttonVariants;
   icon?: IconName;
   loading?: boolean;
   disabled?: boolean;
@@ -61,6 +61,8 @@ const buttonVariants = {
   primary: { bg: colors.primary, fg: colors.onPrimary, border: colors.primary },
   secondary: { bg: colors.card, fg: colors.primary, border: colors.primary },
   danger: { bg: colors.card, fg: colors.danger, border: colors.danger },
+  /** Confirmação de ação perigosa (preenchido). */
+  destructive: { bg: colors.danger, fg: colors.onPrimary, border: colors.danger },
   ghost: { bg: 'transparent', fg: colors.primary, border: 'transparent' },
   neutral: { bg: colors.card, fg: colors.text, border: colors.border },
 };
