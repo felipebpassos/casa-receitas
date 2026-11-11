@@ -85,17 +85,36 @@ export function IconButton({
   );
 }
 
-export function Field({ label, children }: { label: string; children: ReactNode }) {
+export function Field({ label, error, hint, children }: { label: string; error?: string | null; hint?: string; children: ReactNode }) {
   return (
     <View style={{ gap: spacing.xs }}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, !!error && { color: colors.danger }]}>{label}</Text>
       {children}
+      {error ? <FieldError message={error} /> : hint ? <Text style={styles.muted}>{hint}</Text> : null}
     </View>
   );
 }
 
-export function Input(props: TextInputProps) {
-  return <TextInput placeholderTextColor={colors.muted} {...props} style={[styles.input, props.style]} />;
+/** Mensagem de validação embaixo de um campo. */
+export function FieldError({ message }: { message?: string | null }) {
+  if (!message) return null;
+  return (
+    <View style={[styles.row, { gap: spacing.xs }]} accessibilityLiveRegion="polite">
+      <Ionicons name="alert-circle" size={14} color={colors.danger} />
+      <Text style={styles.fieldError}>{message}</Text>
+    </View>
+  );
+}
+
+export function Input({ invalid, ...props }: TextInputProps & { invalid?: boolean }) {
+  return (
+    <TextInput
+      placeholderTextColor={colors.muted}
+      aria-invalid={invalid}
+      {...props}
+      style={[styles.input, invalid && styles.inputInvalid, props.style]}
+    />
+  );
 }
 
 export function SearchBar({ value, onChangeText, placeholder }: { value: string; onChangeText: (t: string) => void; placeholder: string }) {
@@ -216,15 +235,6 @@ export function Loading() {
   );
 }
 
-export function ErrorBanner({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <View style={styles.error}>
-      <Text style={{ color: colors.danger, flex: 1 }}>{message}</Text>
-      {onRetry && <Button title="Tentar de novo" variant="ghost" onPress={onRetry} />}
-    </View>
-  );
-}
-
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   card: {
@@ -261,6 +271,8 @@ export const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.text,
   },
+  inputInvalid: { borderColor: colors.danger, backgroundColor: '#FFF8F6' },
+  fieldError: { flex: 1, fontSize: 13, color: colors.danger },
   search: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -307,12 +319,5 @@ export const styles = StyleSheet.create({
   empty: { alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
   emptyTitle: { fontSize: 17, fontFamily: fonts.serifSemiBold, color: colors.text, textAlign: 'center' },
   emptySubtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
-  error: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.dangerLight,
-    padding: spacing.md,
-    borderRadius: radius.md,
-  },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
 });

@@ -5,9 +5,12 @@ import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native'
 import { DayPicker } from '@/components/DayPicker';
 import { NeedsList } from '@/components/NeedsList';
 import { colors, spacing } from '@/components/theme';
-import { Badge, Button, EmptyState, ErrorBanner, Loading, styles } from '@/components/ui';
+import { ErrorView } from '@/components/ErrorState';
+import { toast } from '@/components/Toast';
+import { Badge, Button, EmptyState, Loading, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
 import { formatShort, weekdayName } from '@/lib/dates';
+import { UserFacingError } from '@/lib/errors';
 import { getPublicRecipeTree } from '@/lib/publicLibrary';
 import { computeNeeds, formatQuantity, type NeedsContext } from '@/lib/shopping';
 import { PLATFORM_ICON, PLATFORM_LABEL, platformOf } from '@/lib/source';
@@ -23,14 +26,20 @@ export default function RecipeDetailScreen() {
 /** Receita que não está na coleção: busca na biblioteca pública. */
 function PublicRecipeLoader({ id }: { id: string }) {
   const [tree, setTree] = useState<PublicRecipeTree | null | undefined>(undefined);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [retrying, setRetrying] = useState(false);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     getPublicRecipeTree(id)
-      .then((t) => !cancelled && setTree(t))
-      .catch((e: Error) => !cancelled && setError(e.message));
+      .then((t) => {
+        if (cancelled) return;
+        setTree(t);
+        setError(null);
+      })
+      .catch((e: unknown) => !cancelled && setError(e))
+      .finally(() => !cancelled && setRetrying(false));
     return () => {
       cancelled = true;
     };
@@ -38,9 +47,16 @@ function PublicRecipeLoader({ id }: { id: string }) {
 
   if (error) {
     return (
-      <View style={{ padding: spacing.lg }}>
-        <ErrorBanner message={error} onRetry={() => { setError(null); setTick((t) => t + 1); }} />
-      </View>
+      <ErrorView
+        error={error}
+        context={{ title: 'Não foi possível abrir a receita' }}
+        retrying={retrying}
+        onRetry={() => {
+          setRetrying(true);
+          setTick((t) => t + 1);
+        }}
+        actions={router.canGoBack() ? <Button title="Voltar" variant="ghost" onPress={() => router.back()} /> : null}
+      />
     );
   }
   if (tree === undefined) return <Loading />;
@@ -90,9 +106,10 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
       if (!recipeId) return;
     }
     if (await data.addMealPlan(date, recipeId)) {
-      Alert.alert(
+      toast.success(
         'Adicionada à semana',
-        `${recipe.name} foi planejada para ${weekdayName(date).toLowerCase()}, ${formatShort(date)}.${isPublicView && !savedCopy ? '\n\nEla também foi salva no seu caderno de receitas.' : ''}`,
+        `${recipe.name} foi planejada para ${weekdayName(date).toLowerCase()}, ${formatShort(date)}.${isPublicView && !savedCopy ? ' Ela também foi salva no seu caderno.' : ''}`,
+        { action: { label: 'Ver semana', onPress: () => router.navigate('/semana') } },
       );
     }
   };
@@ -104,7 +121,9 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
         text: 'Excluir',
         style: 'destructive',
         onPress: async () => {
-          if (await data.deleteRecipe(recipe.id)) router.back();
+          if (!(await data.deleteRecipe(recipe.id))) return;
+          toast.success('Receita excluída', recipe.name);
+          router.back();
         },
       },
     ]);
@@ -116,7 +135,9 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
         text: 'Remover',
         style: 'destructive',
         onPress: async () => {
-          if (await data.deleteRecipe(recipe.id)) router.back();
+          if (!(await data.deleteRecipe(recipe.id))) return;
+          toast.success('Removida do caderno', recipe.name);
+          router.back();
         },
       },
     ]);
@@ -146,7 +167,9 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
               loading={busy}
               onPress={async () => {
                 const copyId = await saveToCollection();
-                if (copyId) router.replace({ pathname: '/recipe/[id]', params: { id: copyId } });
+                if (!copyId) return;
+                toast.success('Salva no seu caderno', recipe.name);
+                router.replace({ pathname: '/recipe/[id]', params: { id: copyId } });
               }}
             />
           )
@@ -158,7 +181,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
             title={platform === 'site' ? 'Ver receita original' : `Ver no ${PLATFORM_LABEL[platform]}`}
             icon={PLATFORM_ICON[platform]}
             variant="ghost"
-            onPress={() => Linking.openURL(recipe.sourceUrl!).catch(() => Alert.alert('Link inválido', recipe.sourceUrl!))}
+            onPress={() => Linking.openURL(recipe.sourceUrl!).catch(() => toast.error(new UserFacingError('Não foi possível abrir este link.', 'Link inválido')))}
           />
         ) : null}
 

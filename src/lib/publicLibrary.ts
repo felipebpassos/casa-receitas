@@ -1,11 +1,12 @@
 // Biblioteca pública: sempre lida do Supabase (funciona com ou sem login).
 import { RECIPE_SELECT, recipeFromRow, type RecipeRow } from './repo/rows';
+import { serviceError } from './errors';
 import { supabase } from './supabase';
 import type { PublicRecipeSummary, PublicRecipeTree, Recipe } from './types';
 
 export async function searchPublicRecipes(q: string, excludeUserId: string | null): Promise<PublicRecipeSummary[]> {
-  const { data, error } = await supabase.rpc('search_public_recipes', { q });
-  if (error) throw new Error(error.message);
+  const { data, error, status } = await supabase.rpc('search_public_recipes', { q });
+  if (error) throw serviceError({ ...error, status });
   return (data as { id: string; user_id: string; name: string; description: string | null; author_name: string | null; item_count: number }[])
     .filter((r) => r.user_id !== excludeUserId)
     .map((r) => ({
@@ -21,7 +22,7 @@ export async function searchPublicRecipes(q: string, excludeUserId: string | nul
 /** Busca a receita pública com todas as subreceitas e os nomes dos ingredientes usados. */
 export async function getPublicRecipeTree(id: string): Promise<PublicRecipeTree | null> {
   const rootRes = await supabase.from('recipes').select(RECIPE_SELECT).eq('id', id).eq('is_public', true).maybeSingle();
-  if (rootRes.error) throw new Error(rootRes.error.message);
+  if (rootRes.error) throw serviceError({ ...rootRes.error, status: rootRes.status });
   if (!rootRes.data) return null;
   const rootRow = rootRes.data as unknown as RecipeRow;
   const root = recipeFromRow(rootRow);
@@ -31,7 +32,7 @@ export async function getPublicRecipeTree(id: string): Promise<PublicRecipeTree 
   let pending = subIdsOf(root).filter((s) => s !== root.id);
   while (pending.length) {
     const res = await supabase.from('recipes').select(RECIPE_SELECT).in('id', pending);
-    if (res.error) throw new Error(res.error.message);
+    if (res.error) throw serviceError({ ...res.error, status: res.status });
     pending = [];
     for (const row of res.data as unknown as RecipeRow[]) {
       const r = recipeFromRow(row);
@@ -44,7 +45,7 @@ export async function getPublicRecipeTree(id: string): Promise<PublicRecipeTree 
   const ingredientNames: Record<string, string> = {};
   if (ingredientIds.length) {
     const res = await supabase.from('ingredients').select('id, name').in('id', ingredientIds);
-    if (res.error) throw new Error(res.error.message);
+    if (res.error) throw serviceError({ ...res.error, status: res.status });
     for (const i of res.data) ingredientNames[i.id] = i.name;
   }
 

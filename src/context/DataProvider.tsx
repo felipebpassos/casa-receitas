@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert } from 'react-native';
+import { toast } from '@/components/Toast';
 import { GLOBAL_CATALOG, GLOBAL_IDS } from '@/lib/catalog';
+import { UserFacingError } from '@/lib/errors';
 import { newId, nowIso } from '@/lib/ids';
 import { localRepo } from '@/lib/repo/localRepo';
 import { dependencyOrder, migrateLocalToRemote } from '@/lib/repo/migrate';
@@ -17,7 +18,10 @@ type DataState = {
   initialized: boolean;
   /** Mensagem exibida enquanto carrega (ex.: migração para a conta). */
   status: string | null;
-  error: string | null;
+  /** Falha ao carregar os dados (erro bruto; use toAppError/ErrorView para exibir). */
+  error: unknown;
+  /** Recarregando após um "tentar de novo". */
+  reloading: boolean;
   reload: () => void;
   isGuest: boolean;
 
@@ -63,7 +67,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [snap, setSnap] = useState<Snapshot>(emptySnapshot);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [reloading, setReloading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
 
   // Carrega os dados do modo atual (celular ou conta). No login, migra antes os dados locais.
@@ -81,10 +86,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSnap(data);
         setError(null);
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        if (!cancelled) setError(e);
       } finally {
         if (!cancelled) {
           setStatus(null);
+          setReloading(false);
           setLoadedKey(key);
         }
       }
@@ -132,7 +138,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await action();
         return true;
       } catch (e) {
-        Alert.alert('Não foi possível salvar', (e as Error).message);
+        toast.error(e, { title: 'Não foi possível salvar' });
         repo.loadAll().then(setSnap, () => undefined);
         return false;
       }
@@ -172,7 +178,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       const parents = parentsOf(snap.recipes, id);
       if (parents.length) {
-        Alert.alert('Não é possível excluir', `Esta receita é usada em: ${parents.map((p) => p.name).join(', ')}. Remova-a dessas receitas primeiro.`);
+        toast.error(
+          new UserFacingError(`Esta receita é usada em: ${parents.map((p) => p.name).join(', ')}. Remova-a dessas receitas primeiro.`, 'Não é possível excluir', 'conflict'),
+        );
         return false;
       }
       return run(
@@ -249,7 +257,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSnap((s) => ({ ...s, customIngredients: [...s.customIngredients, ...created], recipes: [...s.recipes, ...copies] }));
         return recipeMap.get(tree.root.id)!;
       } catch (e) {
-        Alert.alert('Não foi possível salvar', (e as Error).message);
+        toast.error(e, { title: 'Não foi possível salvar a receita' });
         repo.loadAll().then(setSnap, () => undefined);
         return null;
       }
@@ -312,7 +320,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     initialized: loadedKey !== null,
     status,
     error,
-    reload: () => setReloadTick((t) => t + 1),
+    reloading,
+    reload: () => {
+      setReloading(true);
+      setReloadTick((t) => t + 1);
+    },
     isGuest: !userId,
     catalog,
     ingredientName,

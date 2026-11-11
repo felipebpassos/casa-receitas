@@ -1,6 +1,7 @@
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { Platform } from 'react-native';
+import { UserFacingError } from './errors';
 import { supabase } from './supabase';
 
 /**
@@ -55,7 +56,7 @@ async function createSessionFromUrl(url: string) {
 
   const access_token = params.get('access_token');
   const refresh_token = params.get('refresh_token');
-  if (!access_token || !refresh_token) throw new Error('O login não retornou uma sessão.');
+  if (!access_token || !refresh_token) throw new UserFacingError('O login não retornou uma sessão. Tente de novo.', undefined, 'unknown');
   const { error } = await supabase.auth.setSession({ access_token, refresh_token });
   if (error) throw error;
 }

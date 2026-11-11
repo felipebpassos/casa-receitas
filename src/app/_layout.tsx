@@ -4,7 +4,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
-import { colors, fonts, spacing } from '@/components/theme';
+import { ErrorView } from '@/components/ErrorState';
+import { ToastHost } from '@/components/Toast';
+import { colors, fonts } from '@/components/theme';
 import { Button, styles } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthProvider';
 import { DataProvider, useData } from '@/context/DataProvider';
@@ -28,18 +30,22 @@ function LoadingView({ status, overlay }: { status: string | null; overlay?: boo
 }
 
 function Gate() {
-  const { ready, initialized, status, error, reload } = useData();
+  const { ready, initialized, status, error, reload, reloading } = useData();
   const { userId, signOut } = useAuth();
 
   if (!initialized) return <LoadingView status={status} />;
 
   if (error && ready) {
     return (
-      <View style={[styles.screen, styles.empty, { gap: spacing.md }]}>
-        <Text style={styles.emptyTitle}>Não foi possível carregar seus dados</Text>
-        <Text style={styles.emptySubtitle}>{error}</Text>
-        <Button title="Tentar de novo" icon="refresh" onPress={reload} />
-        {userId && <Button title="Sair da conta" variant="ghost" onPress={signOut} />}
+      <View style={styles.screen}>
+        <ErrorView
+          error={error}
+          context={{ title: 'Não foi possível carregar seus dados' }}
+          onRetry={reload}
+          retrying={reloading}
+          forceRetry
+          actions={userId ? <Button title="Sair da conta" icon="log-out-outline" variant="ghost" onPress={signOut} /> : null}
+        />
       </View>
     );
   }
@@ -83,6 +89,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <DataProvider>
         <Gate />
+        <ToastHost />
       </DataProvider>
     </AuthProvider>
   );

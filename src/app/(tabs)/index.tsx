@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { colors, radius, spacing } from '@/components/theme';
-import { Badge, EmptyState, ErrorBanner, Loading, SearchBar, Segmented, styles } from '@/components/ui';
+import { Badge, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 import { searchPublicRecipes } from '@/lib/publicLibrary';
@@ -131,12 +132,23 @@ function ExploreList({ query }: { query: string }) {
   const { findCopyOf } = useData();
   const [results, setResults] = useState<PublicRecipeSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [tick, setTick] = useState(0);
+
+  // Digitação espera 300 ms; "tentar de novo" e puxar para atualizar buscam na hora.
+  const immediate = useRef(false);
+  const retry = () => {
+    immediate.current = true;
+    setRefreshing(true);
+    setTick((t) => t + 1);
+  };
 
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let cancelled = false;
+    const delay = immediate.current ? 0 : 300;
+    immediate.current = false;
     const t = setTimeout(async () => {
       try {
         const data = await searchPublicRecipes(query, userId);
@@ -145,11 +157,14 @@ function ExploreList({ query }: { query: string }) {
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        if (!cancelled) setError(e);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
-    }, 300);
+    }, delay);
     return () => {
       cancelled = true;
       clearTimeout(t);
@@ -161,14 +176,30 @@ function ExploreList({ query }: { query: string }) {
   }
   if (loading) return <Loading />;
 
+  // Sem nada para mostrar: erro ocupa a área. Com resultados antigos: aviso no topo, lista continua.
+  if (error && results.length === 0) {
+    return <ErrorView error={error} context={{ title: 'Não foi possível abrir a biblioteca' }} onRetry={retry} retrying={refreshing} />;
+  }
+
   return (
     <FlatList
       data={results}
       keyExtractor={(r) => r.id}
       contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
       keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={false} onRefresh={() => setTick((t) => t + 1)} />}
-      ListHeaderComponent={error ? <ErrorBanner message="Sem conexão com a biblioteca pública." onRetry={() => setTick((t) => t + 1)} /> : undefined}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
+      ListHeaderComponent={
+        error ? (
+          <ErrorBanner
+            error={error}
+            message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
+            onRetry={retry}
+            retrying={refreshing}
+            onDismiss={() => setError(null)}
+            style={{ marginBottom: spacing.xs }}
+          />
+        ) : undefined
+      }
       renderItem={({ item }) => (
         <Pressable
           onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: item.id } })}

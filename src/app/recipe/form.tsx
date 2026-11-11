@@ -1,15 +1,18 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { ItemPicker } from '@/components/ItemPicker';
 import { colors, spacing } from '@/components/theme';
-import { Button, ChipSelect, EmptyState, Field, IconButton, Input, styles } from '@/components/ui';
+import { toast } from '@/components/Toast';
+import { Button, ChipSelect, EmptyState, Field, FieldError, IconButton, Input, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
+import { useFormValidation } from '@/hooks/useFormValidation';
 import { newId, nowIso } from '@/lib/ids';
 import { allowedSubRecipes, UNITS } from '@/lib/shopping';
 import { PLATFORM_LABEL, parseSource } from '@/lib/source';
 import type { Ingredient, Recipe } from '@/lib/types';
+import { NO_QUANTITY_UNIT, parseQuantity, recipeSchema } from '@/lib/validation';
 
 type Row = {
   key: string;
@@ -19,11 +22,6 @@ type Row = {
   quantity: string;
   unit: string | null;
 };
-
-function parseQuantity(text: string): number | null {
-  const n = Number(text.replace(',', '.').trim());
-  return text.trim() && Number.isFinite(n) && n > 0 ? n : null;
-}
 
 const toRows = (recipe: Recipe | undefined, nameOf: (r: Recipe['items'][number]) => string): Row[] =>
   (recipe?.items ?? []).map((i) => ({
@@ -83,19 +81,23 @@ function RecipeForm() {
   const updateRow = (key: string, patch: Partial<Row>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const removeRow = (key: string) => setRows((prev) => prev.filter((r) => r.key !== key));
 
+  const form = useFormValidation(recipeSchema, { name, description, preparation, source, items: rows });
+  const { errors } = form;
+
   const save = async () => {
-    if (!name.trim()) return Alert.alert('Nome obrigatório', 'Dê um nome para a receita.');
-    if (rows.length === 0) return Alert.alert('Ingredientes', 'Adicione ao menos um ingrediente.');
-    const invalid = rows.find((r) => r.ingredientId && r.unit !== 'a gosto' && parseQuantity(r.quantity) == null);
-    if (invalid) return Alert.alert('Quantidade', `Informe a quantidade de "${invalid.name}" (ou use a unidade "a gosto").`);
-    if (source.trim() && !parsedSource) return Alert.alert('Link inválido', 'Confira o link do vídeo ou da receita original.');
+    const result = form.check();
+    if (!result.ok) {
+      toast.warning('Confira os campos destacados', result.first, { icon: 'alert-circle' });
+      return;
+    }
+    const v = result.value;
 
     const now = nowIso();
     const recipe: Recipe = {
       id: recipeId,
-      name: name.trim(),
-      description: description.trim() || null,
-      preparation: preparation.trim() || null,
+      name: v.name,
+      description: v.description || null,
+      preparation: v.preparation || null,
       sourceUrl: parsedSource?.url ?? null,
       sourcePlatform: parsedSource?.platform ?? null,
       isPublic: isPublic && !isCopy && !data.isGuest,
@@ -104,7 +106,7 @@ function RecipeForm() {
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       items: rows.map((r) => {
-        const quantity = r.unit === 'a gosto' ? null : parseQuantity(r.quantity);
+        const quantity = r.unit === NO_QUANTITY_UNIT ? null : parseQuantity(r.quantity);
         return {
           id: r.key,
           ingredientId: r.ingredientId,
@@ -119,6 +121,7 @@ function RecipeForm() {
     const ok = await data.saveRecipe(recipe);
     setSaving(false);
     if (!ok) return;
+    toast.success(isEdit ? 'Alterações salvas' : 'Receita cadastrada', recipe.isPublic ? 'Ela já aparece na biblioteca pública.' : undefined);
     if (isEdit) router.back();
     else router.replace({ pathname: '/recipe/[id]', params: { id: recipe.id } });
   };
@@ -127,17 +130,18 @@ function RecipeForm() {
     <>
       <Stack.Screen options={{ title: isEdit ? 'Editar receita' : 'Nova receita' }} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 64 }} keyboardShouldPersistTaps="handled">
-        <Field label="Nome *">
-          <Input value={name} onChangeText={setName} placeholder="Ex.: Lasanha à bolonhesa" />
+        <Field label="Nome *" error={errors.name}>
+          <Input value={name} onChangeText={setName} placeholder="Ex.: Lasanha à bolonhesa" invalid={!!errors.name} maxLength={120} />
         </Field>
-        <Field label="Descrição">
-          <Input value={description} onChangeText={setDescription} placeholder="Uma breve descrição" multiline />
+        <Field label="Descrição" error={errors.description}>
+          <Input value={description} onChangeText={setDescription} placeholder="Uma breve descrição" multiline invalid={!!errors.description} maxLength={500} />
         </Field>
 
         <View style={{ gap: spacing.sm }}>
-          <Text style={styles.label}>Ingredientes *</Text>
-          {rows.map((row) =>
-            row.subRecipeId ? (
+          <Text style={[styles.label, !!errors.items && { color: colors.danger }]}>Ingredientes *</Text>
+          {rows.map((row, index) => {
+            const qtyError = errors[`items[${index}].quantity`];
+            return row.subRecipeId ? (
               <View key={row.key} style={[styles.card, { gap: spacing.sm, borderColor: colors.success }]}>
                 <View style={styles.row}>
                   <Ionicons name="book-outline" size={18} color={colors.success} />
@@ -146,41 +150,75 @@ function RecipeForm() {
                 </View>
                 <Text style={styles.muted}>Receita usada como ingrediente. Se não tiver pronta em casa, os ingredientes dela entram na lista.</Text>
                 <View style={styles.row}>
-                  <Input value={row.quantity} onChangeText={(t) => updateRow(row.key, { quantity: t })} placeholder="Qtd. (opcional)" keyboardType="decimal-pad" style={{ width: 130 }} />
+                  <Input
+                    value={row.quantity}
+                    onChangeText={(t) => updateRow(row.key, { quantity: t })}
+                    placeholder="Qtd. (opcional)"
+                    keyboardType="decimal-pad"
+                    invalid={!!qtyError}
+                    style={{ width: 130 }}
+                  />
                   {row.quantity.trim().length > 0 && (
                     <View style={{ flex: 1 }}>
                       <ChipSelect options={UNITS} value={row.unit} onChange={(u) => updateRow(row.key, { unit: u })} />
                     </View>
                   )}
                 </View>
+                <FieldError message={qtyError} />
               </View>
             ) : (
-              <View key={row.key} style={[styles.card, { gap: spacing.sm }]}>
+              <View key={row.key} style={[styles.card, { gap: spacing.sm }, !!qtyError && { borderColor: colors.danger }]}>
                 <View style={styles.row}>
                   <Text style={[styles.subtitle, { flex: 1 }]}>{row.name}</Text>
                   <IconButton name="trash-outline" label={`Remover ${row.name}`} color={colors.danger} onPress={() => removeRow(row.key)} />
                 </View>
                 <View style={styles.row}>
-                  {row.unit !== 'a gosto' && (
-                    <Input value={row.quantity} onChangeText={(t) => updateRow(row.key, { quantity: t })} placeholder="Qtd." keyboardType="decimal-pad" style={{ width: 80 }} />
+                  {row.unit !== NO_QUANTITY_UNIT && (
+                    <Input
+                      value={row.quantity}
+                      onChangeText={(t) => updateRow(row.key, { quantity: t })}
+                      placeholder="Qtd."
+                      keyboardType="decimal-pad"
+                      invalid={!!qtyError}
+                      style={{ width: 80 }}
+                    />
                   )}
                   <View style={{ flex: 1 }}>
                     <ChipSelect options={UNITS} value={row.unit} onChange={(u) => updateRow(row.key, { unit: u })} />
                   </View>
                 </View>
+                <FieldError message={qtyError} />
               </View>
-            ),
-          )}
+            );
+          })}
+          <FieldError message={errors.items} />
           <Button title="Adicionar ingrediente ou receita" icon="add" variant="secondary" onPress={() => setPicking(true)} />
         </View>
 
-        <Field label="Modo de preparo">
-          <Input value={preparation} onChangeText={setPreparation} placeholder="Descreva o passo a passo" multiline style={{ minHeight: 140, textAlignVertical: 'top' }} />
+        <Field label="Modo de preparo" error={errors.preparation}>
+          <Input
+            value={preparation}
+            onChangeText={setPreparation}
+            placeholder="Descreva o passo a passo"
+            multiline
+            invalid={!!errors.preparation}
+            style={{ minHeight: 140, textAlignVertical: 'top' }}
+          />
         </Field>
 
-        <Field label="Link do vídeo ou receita original">
-          <Input value={source} onChangeText={setSource} placeholder="YouTube, Instagram, TikTok, site..." autoCapitalize="none" keyboardType="url" />
-          {parsedSource && <Text style={styles.muted}>Origem: {PLATFORM_LABEL[parsedSource.platform]}</Text>}
+        <Field
+          label="Link do vídeo ou receita original"
+          error={errors.source}
+          hint={parsedSource ? `Origem: ${PLATFORM_LABEL[parsedSource.platform]}` : undefined}
+        >
+          <Input
+            value={source}
+            onChangeText={setSource}
+            placeholder="YouTube, Instagram, TikTok, site..."
+            autoCapitalize="none"
+            keyboardType="url"
+            invalid={!!errors.source}
+          />
         </Field>
 
         <PublicSwitch isGuest={data.isGuest} isCopy={isCopy} value={isPublic} onChange={setIsPublic} />

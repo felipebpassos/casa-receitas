@@ -1,11 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Alert, Image, ScrollView, Text, View } from 'react-native';
+import { Alert, Image, Platform, ScrollView, Text, View } from 'react-native';
 import { colors, spacing } from '@/components/theme';
+import { toast } from '@/components/Toast';
 import { Button, Field, Input, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
+import { useFormValidation } from '@/hooks/useFormValidation';
 import { signInWithGoogle } from '@/lib/googleAuth';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { signInSchema, signUpSchema } from '@/lib/validation';
 
 type Mode = 'signin' | 'signup';
 
@@ -48,6 +51,7 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
                 style: 'destructive',
                 onPress: async () => {
                   await signOut();
+                  toast.info('Você saiu da conta', 'Neste celular, o app volta a funcionar sem conta.');
                   onDone?.();
                 },
               },
@@ -69,44 +73,60 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
+  const form = useFormValidation(mode === 'signin' ? signInSchema : signUpSchema, { name, email, password });
+  const { errors } = form;
+
+  const changeMode = (m: Mode) => {
+    setMode(m);
+    form.reset();
+  };
+
   const google = async () => {
     setGoogleLoading(true);
     try {
-      if (await signInWithGoogle()) onDone?.();
+      if (await signInWithGoogle()) {
+        // Na web a página sai para o Google; o aviso aparece só no app.
+        if (Platform.OS !== 'web') toast.success('Você entrou na sua conta');
+        onDone?.();
+      }
     } catch (e) {
-      Alert.alert('Não foi possível entrar com Google', (e as Error).message);
+      toast.error(e, { title: 'Não foi possível entrar com Google' });
     } finally {
       setGoogleLoading(false);
     }
   };
 
   const submit = async () => {
-    if (!email.trim() || password.length < 6) {
-      Alert.alert('Dados incompletos', 'Informe um e-mail e uma senha com pelo menos 6 caracteres.');
-      return;
-    }
+    const result = form.check();
+    if (!result.ok) return;
+    const v = result.value;
     setLoading(true);
     try {
       if (mode === 'signin') {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error } = await supabase.auth.signInWithPassword({ email: v.email, password: v.password });
         if (error) throw error;
+        toast.success('Você entrou na sua conta');
         onDone?.();
       } else {
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { display_name: name.trim() || undefined } },
+          email: v.email,
+          password: v.password,
+          options: { data: { display_name: ('name' in v && v.name) || undefined } },
         });
         if (error) throw error;
         if (data.session) {
+          toast.success('Conta criada', 'Suas receitas agora ficam salvas na nuvem.');
           onDone?.();
         } else {
-          Alert.alert('Confirme seu e-mail', 'Enviamos um link de confirmação. Depois de confirmar, entre com seu e-mail e senha.');
-          setMode('signin');
+          toast.info('Confirme seu e-mail', 'Enviamos um link de confirmação. Depois de confirmar, entre com seu e-mail e senha.', {
+            icon: 'mail-outline',
+            duration: 8000,
+          });
+          changeMode('signin');
         }
       }
     } catch (e) {
-      Alert.alert('Não foi possível continuar', (e as Error).message);
+      toast.error(e, { title: mode === 'signin' ? 'Não foi possível entrar' : 'Não foi possível criar a conta' });
     } finally {
       setLoading(false);
     }
@@ -120,7 +140,7 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
 
       <Segmented<Mode>
         value={mode}
-        onChange={setMode}
+        onChange={changeMode}
         options={[
           { value: 'signin', label: 'Entrar' },
           { value: 'signup', label: 'Criar conta' },
@@ -128,15 +148,33 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
       />
 
       {mode === 'signup' && (
-        <Field label="Nome">
-          <Input value={name} onChangeText={setName} placeholder="Digite seu nome" autoCapitalize="words" />
+        <Field label="Nome" error={errors.name}>
+          <Input value={name} onChangeText={setName} placeholder="Digite seu nome" autoCapitalize="words" invalid={!!errors.name} maxLength={60} />
         </Field>
       )}
-      <Field label="E-mail">
-        <Input value={email} onChangeText={setEmail} placeholder="seu@email.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" />
+      <Field label="E-mail" error={errors.email}>
+        <Input
+          value={email}
+          onChangeText={setEmail}
+          placeholder="seu@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          invalid={!!errors.email}
+        />
       </Field>
-      <Field label="Senha">
-        <Input value={password} onChangeText={setPassword} placeholder="Mínimo de 6 caracteres" secureTextEntry autoCapitalize="none" />
+      <Field label="Senha" error={errors.password}>
+        <Input
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Mínimo de 6 caracteres"
+          secureTextEntry
+          autoCapitalize="none"
+          autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+          invalid={!!errors.password}
+          onSubmitEditing={submit}
+          returnKeyType="go"
+        />
       </Field>
 
       <Button title={mode === 'signin' ? 'Entrar' : 'Criar conta'} onPress={submit} loading={loading} disabled={googleLoading} />

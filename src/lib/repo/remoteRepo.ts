@@ -1,10 +1,11 @@
+import { serviceError, UserFacingError } from '../errors';
 import { supabase } from '../supabase';
 import type { Ingredient, Snapshot } from '../types';
 import { RECIPE_SELECT, recipeFromRow, recipeToPayload, type RecipeRow } from './rows';
 import type { Repo } from './types';
 
-function check<T>(res: { data: T; error: { message: string } | null }): NonNullable<T> {
-  if (res.error) throw new Error(res.error.message);
+function check<T>(res: { data: T; error: { message: string; code?: string } | null; status?: number }): NonNullable<T> {
+  if (res.error) throw serviceError({ ...res.error, status: res.status });
   return (res.data ?? []) as NonNullable<T>;
 }
 
@@ -46,7 +47,7 @@ export class RemoteRepo implements Repo {
     const res = await supabase
       .from('ingredients')
       .insert({ id: ingredient.id, name: ingredient.name, default_unit: ingredient.unit, created_by: this.userId });
-    if (res.error?.code === '23505') throw new Error('Esse ingrediente já existe.');
+    if (res.error?.code === '23505') throw new UserFacingError('Esse ingrediente já existe.', 'Ingrediente repetido', 'conflict');
     check(res);
   }
 
@@ -56,7 +57,7 @@ export class RemoteRepo implements Repo {
 
   async deleteRecipe(id: string) {
     const res = await supabase.from('recipes').delete().eq('id', id);
-    if (res.error?.code === '23503') throw new Error('Esta receita é usada como subreceita em outra receita.');
+    if (res.error?.code === '23503') throw new UserFacingError('Esta receita é usada como subreceita em outra receita.', 'Não é possível excluir', 'conflict');
     check(res);
   }
 

@@ -1,13 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { NeedsList } from '@/components/NeedsList';
 import { RecipePicker } from '@/components/RecipePicker';
-import { colors, radius, spacing } from '@/components/theme';
-import { Checkbox, Chip, ChipSelect, IconButton, Input, styles } from '@/components/ui';
+import { colors, spacing } from '@/components/theme';
+import { toast } from '@/components/Toast';
+import { Checkbox, Chip, ChipSelect, FieldError, IconButton, Input, styles } from '@/components/ui';
 import { WeekNavigator } from '@/components/WeekNavigator';
 import { useData } from '@/context/DataProvider';
+import { useFormValidation } from '@/hooks/useFormValidation';
+import { extraSchema, parseQuantity } from '@/lib/validation';
 import { addDays, formatShort, today, weekDays, weekStartOf, weekdayName } from '@/lib/dates';
 import { computeNeeds, formatQuantity, UNITS, type NeedItem } from '@/lib/shopping';
 import type { ShoppingExtra } from '@/lib/types';
@@ -16,29 +19,19 @@ export default function WeekScreen() {
   const data = useData();
   const [weekStart, setWeekStart] = useState(() => weekStartOf(today()));
   const [pickingFor, setPickingFor] = useState<string | null>(null);
-  const [lastBought, setLastBought] = useState<NeedItem | null>(null);
 
   const weekEnd = addDays(weekStart, 6);
   const plans = useMemo(() => data.mealPlans.filter((p) => p.date >= weekStart && p.date <= weekEnd), [data.mealPlans, weekStart, weekEnd]);
   const needs = useMemo(() => computeNeeds(plans.map((p) => p.recipeId), data.needsContext), [plans, data.needsContext]);
   const extras = data.extras.filter((e) => e.weekStart === weekStart);
 
-  // "Desfazer" some depois de alguns segundos.
-  useEffect(() => {
-    if (!lastBought) return;
-    const t = setTimeout(() => setLastBought(null), 5000);
-    return () => clearTimeout(t);
-  }, [lastBought]);
-
-  // Comprei = passa a ter em casa (Despensa) e sai da lista.
-  const bought = (item: NeedItem) => {
-    setLastBought(item);
-    data.setHasIngredient(item.ingredientId, true);
-  };
-
-  const undo = () => {
-    if (lastBought) data.setHasIngredient(lastBought.ingredientId, false);
-    setLastBought(null);
+  // Comprei = passa a ter em casa (Despensa) e sai da lista, com opção de desfazer.
+  const bought = async (item: NeedItem) => {
+    if (!(await data.setHasIngredient(item.ingredientId, true))) return;
+    toast.success(`${item.name} agora está na Despensa`, undefined, {
+      duration: 5000,
+      action: { label: 'Desfazer', onPress: () => data.setHasIngredient(item.ingredientId, false) },
+    });
   };
 
   return (
@@ -116,31 +109,6 @@ export default function WeekScreen() {
         <ExtraForm onAdd={(name, quantity, unit) => data.addExtra(weekStart, name, quantity, unit)} />
       </ScrollView>
 
-      {lastBought && (
-        <View
-          style={{
-            position: 'absolute',
-            left: spacing.lg,
-            right: spacing.lg,
-            bottom: spacing.lg,
-            backgroundColor: colors.text,
-            borderRadius: radius.md,
-            padding: spacing.md,
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: spacing.md,
-            elevation: 6,
-          }}
-        >
-          <Text style={{ color: colors.background, flex: 1 }} numberOfLines={1}>
-            {lastBought.name} agora está na Despensa
-          </Text>
-          <Pressable onPress={undo} hitSlop={10}>
-            <Text style={{ color: '#F2B596', fontWeight: '700' }}>DESFAZER</Text>
-          </Pressable>
-        </View>
-      )}
-
       <RecipePicker
         visible={!!pickingFor}
         title={pickingFor ? `${weekdayName(pickingFor)}, ${formatShort(pickingFor)}` : ''}
@@ -174,25 +142,39 @@ function ExtraForm({ onAdd }: { onAdd: (name: string, quantity: number | null, u
   const [quantity, setQuantity] = useState('');
   const [unit, setUnit] = useState<string | null>(null);
 
+  const form = useFormValidation(extraSchema, { name, quantity, unit });
+  const { errors } = form;
+
   const submit = async () => {
-    if (!name.trim()) return;
-    const q = Number(quantity.replace(',', '.'));
-    const hasQty = quantity.trim() !== '' && q > 0;
-    const ok = await onAdd(name, hasQty ? q : null, hasQty ? unit : null);
+    const result = form.check();
+    if (!result.ok) return;
+    const q = parseQuantity(result.value.quantity);
+    const ok = await onAdd(result.value.name, q, q != null ? unit : null);
     if (ok) {
       setName('');
       setQuantity('');
       setUnit(null);
+      form.reset();
     }
   };
 
   return (
     <View style={[styles.card, { gap: spacing.sm }]}>
       <View style={styles.row}>
-        <Input value={name} onChangeText={setName} placeholder="Ex.: Detergente" style={{ flex: 1 }} onSubmitEditing={submit} returnKeyType="done" />
-        <Input value={quantity} onChangeText={setQuantity} placeholder="Qtd." keyboardType="decimal-pad" style={{ width: 70 }} />
+        <Input
+          value={name}
+          onChangeText={setName}
+          placeholder="Ex.: Detergente"
+          style={{ flex: 1 }}
+          onSubmitEditing={submit}
+          returnKeyType="done"
+          invalid={!!errors.name}
+          maxLength={80}
+        />
+        <Input value={quantity} onChangeText={setQuantity} placeholder="Qtd." keyboardType="decimal-pad" style={{ width: 70 }} invalid={!!errors.quantity} />
         <IconButton name="add-circle" label="Adicionar item" color={name.trim() ? colors.primary : colors.border} size={34} onPress={submit} />
       </View>
+      <FieldError message={errors.name ?? errors.quantity} />
       {quantity.trim().length > 0 && <ChipSelect options={UNITS} value={unit} onChange={setUnit} />}
     </View>
   );

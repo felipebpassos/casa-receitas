@@ -13,6 +13,9 @@ export const colors = {
   surface: '#EFE8D9',
   danger: '#B3261E',
   dangerLight: '#F9E3DF',
+  /** Avisos que não são culpa de ninguém (ex.: sem internet). */
+  warning: '#8A5A12',
+  warningLight: '#FBEBD0',
   /** "Falta comprar": mesmo laranja da marca. */
   accent: '#C8603A',
   accentLight: '#F6E4D9',
