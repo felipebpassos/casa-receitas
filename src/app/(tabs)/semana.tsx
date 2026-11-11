@@ -5,15 +5,14 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { NeedsList } from '@/components/NeedsList';
 import { RecipePicker } from '@/components/RecipePicker';
 import { colors, spacing } from '@/components/theme';
-import { toast } from '@/components/Toast';
 import { Checkbox, Chip, ChipSelect, FieldError, IconButton, Input, styles } from '@/components/ui';
 import { WeekNavigator } from '@/components/WeekNavigator';
 import { useData } from '@/context/DataProvider';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { extraSchema, parseQuantity } from '@/lib/validation';
 import { addDays, formatShort, today, weekDays, weekStartOf, weekdayName } from '@/lib/dates';
-import { computeNeeds, formatQuantity, UNITS, type NeedItem } from '@/lib/shopping';
-import type { ShoppingExtra } from '@/lib/types';
+import { computeGroups, countItems, formatQuantity, UNITS, type NeedGroup, type NeedItem } from '@/lib/shopping';
+import type { ShoppingCheck, ShoppingExtra } from '@/lib/types';
 
 export default function WeekScreen() {
   const data = useData();
@@ -22,17 +21,14 @@ export default function WeekScreen() {
 
   const weekEnd = addDays(weekStart, 6);
   const plans = useMemo(() => data.mealPlans.filter((p) => p.date >= weekStart && p.date <= weekEnd), [data.mealPlans, weekStart, weekEnd]);
-  const needs = useMemo(() => computeNeeds(plans.map((p) => p.recipeId), data.needsContext), [plans, data.needsContext]);
+  const groups = useMemo(() => computeGroups(plans.map((p) => p.recipeId), data.needsContext), [plans, data.needsContext]);
   const extras = data.extras.filter((e) => e.weekStart === weekStart);
 
-  // Comprei = passa a ter em casa (Despensa) e sai da lista, com opção de desfazer.
-  const bought = async (item: NeedItem) => {
-    if (!(await data.setHasIngredient(item.ingredientId, true))) return;
-    toast.success(`${item.name} agora está na Despensa`, undefined, {
-      duration: 5000,
-      action: { label: 'Desfazer', onPress: () => data.setHasIngredient(item.ingredientId, false) },
-    });
-  };
+  // Riscar = já tenho em casa ou já peguei no mercado. Vale só para esta semana.
+  const checkOf = (group: NeedGroup, item: NeedItem): ShoppingCheck => ({ weekStart, recipeId: group.recipeId, ingredientId: item.ingredientId, unit: item.unit });
+  const isChecked = (group: NeedGroup, item: NeedItem) => data.isChecked(checkOf(group, item));
+  const total = countItems(groups);
+  const done = groups.reduce((n, g) => n + g.items.filter((i) => isChecked(g, i)).length, 0);
 
   return (
     <View style={styles.screen}>
@@ -76,23 +72,24 @@ export default function WeekScreen() {
         {/* O que comprar */}
         <View style={[styles.row, { marginTop: spacing.sm }]}>
           <Ionicons name="cart-outline" size={22} color={colors.text} />
-          <Text style={[styles.subtitle, { flex: 1 }]}>O que comprar nesta semana</Text>
+          <Text style={[styles.subtitle, { flex: 1 }]}>Lista de compras da semana</Text>
+          {total > 0 && <Text style={[styles.muted, done === total && { color: colors.success, fontWeight: '700' }]}>{`${done}/${total}`}</Text>}
         </View>
-        <View style={[styles.card, { paddingVertical: spacing.xs }]}>
-          {plans.length === 0 ? (
-            <Text style={[styles.muted, { paddingVertical: spacing.md }]}>Adicione receitas aos dias para ver o que precisa comprar.</Text>
-          ) : needs.length === 0 ? (
-            <View style={[styles.row, { paddingVertical: spacing.md }]}>
-              <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-              <Text style={styles.body}>Você tem tudo para as receitas da semana!</Text>
-            </View>
-          ) : (
-            <>
-              <NeedsList items={needs} onBought={bought} />
-              <Text style={[styles.muted, { paddingVertical: spacing.sm }]}>Marque o que comprou: o item passa a constar como “tenho” na Despensa.</Text>
-            </>
-          )}
-        </View>
+        {groups.length === 0 ? (
+          <View style={styles.card}>
+            <Text style={[styles.muted, { paddingVertical: spacing.sm }]}>Adicione receitas aos dias para ver os ingredientes necessários.</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.muted}>Risque o que você já tem em casa ou já pegou no mercado. Já tem um preparo pronto? Toque em “Riscar tudo” nele.</Text>
+            <NeedsList
+              groups={groups}
+              isChecked={isChecked}
+              onToggle={(g, i) => data.setChecked([checkOf(g, i)], !isChecked(g, i))}
+              onToggleGroup={(g, checked) => data.setChecked(g.items.map((i) => checkOf(g, i)), checked)}
+            />
+          </>
+        )}
 
         {/* Avulsos */}
         <Text style={[styles.label, { marginTop: spacing.sm }]}>Outros itens</Text>

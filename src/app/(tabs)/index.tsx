@@ -3,12 +3,13 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
+import { StatusBadge } from '@/components/StatusBadge';
 import { colors, radius, spacing } from '@/components/theme';
 import { Badge, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 import { searchPublicRecipes } from '@/lib/publicLibrary';
-import { computeNeeds, normalizeName } from '@/lib/shopping';
+import { computeGroups, countItems, normalizeName } from '@/lib/shopping';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import type { PublicRecipeSummary, Recipe } from '@/lib/types';
 
@@ -21,7 +22,6 @@ export default function RecipesScreen() {
   return (
     <View style={styles.screen}>
       <View style={{ padding: spacing.lg, gap: spacing.md }}>
-        <SearchBar value={query} onChangeText={setQuery} placeholder="Buscar por nome ou ingrediente..." />
         <Segmented<Tab>
           value={tab}
           onChange={setTab}
@@ -29,6 +29,12 @@ export default function RecipesScreen() {
             { value: 'collection', label: 'Meu caderno', icon: 'book-outline' },
             { value: 'explore', label: 'Explorar', icon: 'compass-outline' },
           ]}
+        />
+        {/* Abaixo do toggle: cada aba busca coisas diferentes (no futuro, Explorar também busca perfis). */}
+        <SearchBar
+          value={query}
+          onChangeText={setQuery}
+          placeholder={tab === 'explore' ? 'Buscar receitas ou pessoas...' : 'Buscar no seu caderno...'}
         />
       </View>
 
@@ -82,7 +88,7 @@ function CollectionList({ query }: { query: string }) {
       keyExtractor={(r) => r.id}
       contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96, gap: spacing.sm }}
       keyboardShouldPersistTaps="handled"
-      renderItem={({ item }) => <RecipeCard recipe={item} missing={computeNeeds([item.id], needsContext).length} />}
+      renderItem={({ item }) => <RecipeCard recipe={item} itemCount={countItems(computeGroups([item.id], needsContext))} />}
       ListEmptyComponent={
         query ? (
           <EmptyState icon="search" title="Nenhuma receita encontrada" subtitle={`Nada com "${query}" no nome ou nos ingredientes.`} />
@@ -98,7 +104,7 @@ function CollectionList({ query }: { query: string }) {
   );
 }
 
-function RecipeCard({ recipe, missing }: { recipe: Recipe; missing: number }) {
+function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }) {
   return (
     <Pressable
       onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: recipe.id } })}
@@ -108,7 +114,7 @@ function RecipeCard({ recipe, missing }: { recipe: Recipe; missing: number }) {
         <Text style={[styles.subtitle, { flex: 1 }]} numberOfLines={1}>
           {recipe.name}
         </Text>
-        {recipe.originRecipeId ? <Badge label="salva" /> : recipe.isPublic && <Badge label="pública" tone="success" />}
+        {recipe.originRecipeId ? <Badge label="salva" /> : <StatusBadge status={recipe.status} />}
       </View>
       {recipe.description ? (
         <Text style={styles.muted} numberOfLines={2}>
@@ -116,9 +122,9 @@ function RecipeCard({ recipe, missing }: { recipe: Recipe; missing: number }) {
         </Text>
       ) : null}
       <View style={styles.row}>
-        <Ionicons name={missing === 0 ? 'checkmark-circle' : 'cart-outline'} size={14} color={missing === 0 ? colors.success : colors.accent} />
+        <Ionicons name="cart-outline" size={14} color={colors.accent} />
         <Text style={[styles.muted, { flex: 1 }]}>
-          {missing === 0 ? 'Tem tudo em casa' : `Falta${missing > 1 ? 'm' : ''} ${missing} ite${missing > 1 ? 'ns' : 'm'}`}
+          {`${itemCount} ingrediente${itemCount === 1 ? '' : 's'}`}
           {recipe.originAuthorName ? ` · de ${recipe.originAuthorName}` : ''}
         </Text>
       </View>

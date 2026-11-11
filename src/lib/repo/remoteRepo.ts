@@ -1,6 +1,6 @@
 import { serviceError, UserFacingError } from '../errors';
 import { supabase } from '../supabase';
-import type { Ingredient, Snapshot } from '../types';
+import type { ShoppingCheck, Snapshot } from '../types';
 import { RECIPE_SELECT, recipeFromRow, recipeToPayload, type RecipeRow } from './rows';
 import type { Repo } from './types';
 
@@ -15,22 +15,15 @@ export class RemoteRepo implements Repo {
 
   async loadAll(): Promise<Snapshot> {
     const uid = this.userId;
-    const [ingredients, recipes, pantryIng, pantryRec, plans, extras] = await Promise.all([
-      supabase.from('ingredients').select('id, name, default_unit').eq('created_by', uid),
+    const [recipes, plans, extras, checks] = await Promise.all([
       supabase.from('recipes').select(RECIPE_SELECT).eq('user_id', uid).order('name'),
-      supabase.from('pantry_ingredients').select('ingredient_id').eq('user_id', uid),
-      supabase.from('pantry_recipes').select('recipe_id').eq('user_id', uid),
       supabase.from('meal_plans').select('id, date, recipe_id').eq('user_id', uid).order('created_at'),
       supabase.from('shopping_extras').select('id, week_start, name, quantity, unit, is_purchased').eq('user_id', uid).order('created_at'),
+      supabase.from('shopping_checks').select('week_start, recipe_id, ingredient_id, unit').eq('user_id', uid),
     ]);
 
     return {
-      customIngredients: check(ingredients).map(
-        (i): Ingredient => ({ id: i.id, name: i.name, unit: i.default_unit, custom: true }),
-      ),
       recipes: (check(recipes) as unknown as RecipeRow[]).map(recipeFromRow),
-      pantryIngredientIds: check(pantryIng).map((r) => r.ingredient_id),
-      pantryRecipeIds: check(pantryRec).map((r) => r.recipe_id),
       mealPlans: check(plans).map((p) => ({ id: p.id, date: p.date, recipeId: p.recipe_id })),
       extras: check(extras).map((e) => ({
         id: e.id,
@@ -40,15 +33,8 @@ export class RemoteRepo implements Repo {
         unit: e.unit,
         purchased: e.is_purchased,
       })),
+      checks: check(checks).map((c) => ({ weekStart: c.week_start, recipeId: c.recipe_id, ingredientId: c.ingredient_id, unit: c.unit })),
     };
-  }
-
-  async createIngredient(ingredient: Ingredient) {
-    const res = await supabase
-      .from('ingredients')
-      .insert({ id: ingredient.id, name: ingredient.name, default_unit: ingredient.unit, created_by: this.userId });
-    if (res.error?.code === '23505') throw new UserFacingError('Esse ingrediente já existe.', 'Ingrediente repetido', 'conflict');
-    check(res);
   }
 
   async saveRecipe(recipe: Parameters<Repo['saveRecipe']>[0]) {
@@ -59,30 +45,6 @@ export class RemoteRepo implements Repo {
     const res = await supabase.from('recipes').delete().eq('id', id);
     if (res.error?.code === '23503') throw new UserFacingError('Esta receita é usada como subreceita em outra receita.', 'Não é possível excluir', 'conflict');
     check(res);
-  }
-
-  async setPantryIngredient(ingredientId: string, has: boolean) {
-    if (has) {
-      check(
-        await supabase
-          .from('pantry_ingredients')
-          .upsert({ user_id: this.userId, ingredient_id: ingredientId }, { onConflict: 'user_id,ingredient_id', ignoreDuplicates: true }),
-      );
-    } else {
-      check(await supabase.from('pantry_ingredients').delete().eq('user_id', this.userId).eq('ingredient_id', ingredientId));
-    }
-  }
-
-  async setPantryRecipe(recipeId: string, has: boolean) {
-    if (has) {
-      check(
-        await supabase
-          .from('pantry_recipes')
-          .upsert({ user_id: this.userId, recipe_id: recipeId }, { onConflict: 'user_id,recipe_id', ignoreDuplicates: true }),
-      );
-    } else {
-      check(await supabase.from('pantry_recipes').delete().eq('user_id', this.userId).eq('recipe_id', recipeId));
-    }
   }
 
   async addMealPlan(plan: Parameters<Repo['addMealPlan']>[0]) {
@@ -121,5 +83,31 @@ export class RemoteRepo implements Repo {
 
   async deleteExtra(id: string) {
     check(await supabase.from('shopping_extras').delete().eq('id', id));
+  }
+
+  async setChecks(checks: ShoppingCheck[], checked: boolean) {
+    if (!checks.length) return;
+    if (checked) {
+      check(
+        await supabase.from('shopping_checks').upsert(
+          checks.map((c) => ({ user_id: this.userId, week_start: c.weekStart, recipe_id: c.recipeId, ingredient_id: c.ingredientId, unit: c.unit })),
+          { onConflict: 'user_id,week_start,recipe_id,ingredient_id,unit', ignoreDuplicates: true },
+        ),
+      );
+      return;
+    }
+    const results = await Promise.all(
+      checks.map((c) =>
+        supabase
+          .from('shopping_checks')
+          .delete()
+          .eq('user_id', this.userId)
+          .eq('week_start', c.weekStart)
+          .eq('recipe_id', c.recipeId)
+          .eq('ingredient_id', c.ingredientId)
+          .eq('unit', c.unit),
+      ),
+    );
+    results.forEach(check);
   }
 }

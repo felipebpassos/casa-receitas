@@ -33,18 +33,27 @@ export type RecipeLike = {
 export type NeedsContext = {
   getRecipe: (id: string) => RecipeLike | undefined;
   ingredientName: (id: string) => string;
-  hasIngredient: (id: string) => boolean;
-  hasRecipe: (id: string) => boolean;
 };
 
 export type NeedItem = {
+  /** `${ingredientId}|${unit}` — único dentro do grupo. */
   key: string;
   ingredientId: string;
   name: string;
   quantity: number | null;
+  /** Unidade normalizada (kg→g, l→ml); '' quando não há. */
   unit: string;
-  /** Receitas (incluindo subreceitas) que pedem este ingrediente. */
-  usedIn: string[];
+};
+
+/** Ingredientes de uma receita (ou subpreparo) na lista de compras. */
+export type NeedGroup = {
+  recipeId: string;
+  name: string;
+  /** Só aparece como parte de outra receita (não foi planejada diretamente). */
+  isSub: boolean;
+  /** Receitas que usam esta como subpreparo. */
+  usedBy: string[];
+  items: NeedItem[];
 };
 
 // Única conversão feita: kg→g e l→ml. Unidades diferentes nunca são somadas.
@@ -90,53 +99,63 @@ export function normalizeName(value: string): string {
 }
 
 /**
- * Calcula o que precisa ser comprado para as receitas informadas
+ * Lista de compras agrupada por preparo, para as receitas informadas
  * (a mesma receita pode aparecer mais de uma vez — ex.: planejada em dois dias).
  *
- * - Ingredientes que você tem em casa não entram.
- * - Subreceita que você tem pronta em casa não entra.
- * - Subreceita que você não tem: entram os ingredientes dela (receita inteira,
- *   uma vez por uso), em qualquer nível. Ciclos são ignorados com segurança.
- * - Mesmo ingrediente + unidade compatível são somados.
+ * - Cada receita e cada subreceita (em qualquer nível) é um grupo próprio:
+ *   ingredientes de grupos diferentes NUNCA são somados, para que dê para riscar
+ *   o subpreparo que você já tem pronto sem mexer no resto.
+ * - Receita usada N vezes (planejada ou como subpreparo) entra N vezes no seu grupo.
+ * - Dentro do grupo, mesmo ingrediente + unidade compatível são somados.
+ * - Ordem: cada receita seguida dos seus subpreparos. Ciclos são ignorados com segurança.
  */
-export function computeNeeds(recipeIds: string[], ctx: NeedsContext): NeedItem[] {
-  const byKey = new Map<string, NeedItem>();
+export function computeGroups(recipeIds: string[], ctx: NeedsContext): NeedGroup[] {
+  const groups = new Map<string, NeedGroup & { byKey: Map<string, NeedItem> }>();
+  const planned = new Set(recipeIds);
 
-  const expand = (recipe: RecipeLike, path: Set<string>) => {
+  const expand = (recipe: RecipeLike, parent: RecipeLike | null, path: Set<string>) => {
+    let group = groups.get(recipe.id);
+    if (!group) {
+      group = { recipeId: recipe.id, name: recipe.name, isSub: !planned.has(recipe.id), usedBy: [], items: [], byKey: new Map() };
+      groups.set(recipe.id, group);
+    }
+    if (parent && !group.usedBy.includes(parent.name)) group.usedBy.push(parent.name);
+
     for (const item of recipe.items) {
       if (item.ingredientId) {
-        if (ctx.hasIngredient(item.ingredientId)) continue;
         const base = toBaseUnit(item.quantity, item.unit);
         const key = `${item.ingredientId}|${base.unit}`;
-        const existing = byKey.get(key);
+        const existing = group.byKey.get(key);
         if (existing) {
           if (base.quantity != null) existing.quantity = (existing.quantity ?? 0) + base.quantity;
-          if (!existing.usedIn.includes(recipe.name)) existing.usedIn.push(recipe.name);
         } else {
-          byKey.set(key, {
+          group.byKey.set(key, {
             key,
             ingredientId: item.ingredientId,
             name: ctx.ingredientName(item.ingredientId),
             quantity: base.quantity,
             unit: base.unit,
-            usedIn: [recipe.name],
           });
         }
-      } else if (item.subRecipeId) {
-        if (ctx.hasRecipe(item.subRecipeId) || path.has(item.subRecipeId)) continue;
+      } else if (item.subRecipeId && !path.has(item.subRecipeId)) {
         const sub = ctx.getRecipe(item.subRecipeId);
-        if (sub) expand(sub, new Set(path).add(sub.id));
+        if (sub) expand(sub, recipe, new Set(path).add(sub.id));
       }
     }
   };
 
   for (const id of recipeIds) {
     const recipe = ctx.getRecipe(id);
-    if (recipe) expand(recipe, new Set([recipe.id]));
+    if (recipe) expand(recipe, null, new Set([recipe.id]));
   }
 
-  return [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  return [...groups.values()]
+    .map(({ byKey, ...g }) => ({ ...g, items: [...byKey.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')) }))
+    .filter((g) => g.items.length > 0);
 }
+
+/** Quantos itens há na lista agrupada. */
+export const countItems = (groups: NeedGroup[]) => groups.reduce((n, g) => n + g.items.length, 0);
 
 /** `recipeId` usa `targetId` como subreceita (direta ou indiretamente)? */
 export function dependsOn(recipeId: string, targetId: string, getRecipe: (id: string) => RecipeLike | undefined): boolean {

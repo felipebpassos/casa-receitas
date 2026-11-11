@@ -1,8 +1,39 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { emptySnapshot, type Snapshot } from '../types';
+import { GLOBAL_CATALOG } from '../catalog';
+import { normalizeName } from '../shopping';
+import { emptySnapshot, checkKey, type Recipe, type Snapshot } from '../types';
 import type { Repo } from './types';
 
 const KEY = 'receitas-de-casa:data:v1';
+
+/** Formato antigo (com Despensa, ingredientes personalizados e isPublic). */
+type LegacyData = Omit<Partial<Snapshot>, 'recipes'> & {
+  customIngredients?: { id: string; name: string }[];
+  recipes?: (Omit<Recipe, 'status' | 'rejectionReason'> & Partial<Pick<Recipe, 'status' | 'rejectionReason'>> & { isPublic?: boolean })[];
+};
+
+/**
+ * Converte dados salvos por versões antigas: ingredientes personalizados viram o do
+ * catálogo de mesmo nome (sem correspondente, o item sai da receita); a Despensa é descartada.
+ */
+function normalize(raw: LegacyData): Snapshot {
+  const catalogByName = new Map(GLOBAL_CATALOG.map((i) => [normalizeName(i.name), i.id]));
+  const customMap = new Map((raw.customIngredients ?? []).map((i) => [i.id, catalogByName.get(normalizeName(i.name)) ?? null]));
+
+  const recipes: Recipe[] = (raw.recipes ?? []).map(({ isPublic: _legacy, ...r }) => ({
+    ...r,
+    // Sem login nada vai para a biblioteca.
+    status: 'PRIVATE',
+    rejectionReason: null,
+    items: r.items.flatMap((i) => {
+      if (!i.ingredientId || !customMap.has(i.ingredientId)) return [i];
+      const id = customMap.get(i.ingredientId);
+      return id ? [{ ...i, ingredientId: id }] : [];
+    }),
+  }));
+
+  return { ...emptySnapshot(), mealPlans: raw.mealPlans ?? [], extras: raw.extras ?? [], checks: raw.checks ?? [], recipes };
+}
 
 /** Dados do usuário sem login: um único JSON no AsyncStorage. */
 class LocalRepo implements Repo {
@@ -11,7 +42,7 @@ class LocalRepo implements Repo {
   private async data(): Promise<Snapshot> {
     if (!this.cache) {
       const raw = await AsyncStorage.getItem(KEY);
-      this.cache = raw ? { ...emptySnapshot(), ...(JSON.parse(raw) as Partial<Snapshot>) } : emptySnapshot();
+      this.cache = raw ? normalize(JSON.parse(raw) as LegacyData) : emptySnapshot();
     }
     return this.cache;
   }
@@ -28,25 +59,13 @@ class LocalRepo implements Repo {
 
   async isEmpty() {
     const d = await this.data();
-    return (
-      d.recipes.length === 0 &&
-      d.customIngredients.length === 0 &&
-      d.pantryIngredientIds.length === 0 &&
-      d.pantryRecipeIds.length === 0 &&
-      d.mealPlans.length === 0 &&
-      d.extras.length === 0
-    );
+    return d.recipes.length === 0 && d.mealPlans.length === 0 && d.extras.length === 0 && d.checks.length === 0;
   }
 
   async clear() {
     this.cache = emptySnapshot();
     await AsyncStorage.removeItem(KEY);
   }
-
-  createIngredient: Repo['createIngredient'] = (ingredient) =>
-    this.update((d) => {
-      d.customIngredients.push(ingredient);
-    });
 
   saveRecipe: Repo['saveRecipe'] = (recipe) =>
     this.update((d) => {
@@ -59,19 +78,7 @@ class LocalRepo implements Repo {
     this.update((d) => {
       d.recipes = d.recipes.filter((r) => r.id !== id);
       d.mealPlans = d.mealPlans.filter((p) => p.recipeId !== id);
-      d.pantryRecipeIds = d.pantryRecipeIds.filter((r) => r !== id);
-    });
-
-  setPantryIngredient: Repo['setPantryIngredient'] = (id, has) =>
-    this.update((d) => {
-      d.pantryIngredientIds = d.pantryIngredientIds.filter((i) => i !== id);
-      if (has) d.pantryIngredientIds.push(id);
-    });
-
-  setPantryRecipe: Repo['setPantryRecipe'] = (id, has) =>
-    this.update((d) => {
-      d.pantryRecipeIds = d.pantryRecipeIds.filter((i) => i !== id);
-      if (has) d.pantryRecipeIds.push(id);
+      d.checks = d.checks.filter((c) => c.recipeId !== id);
     });
 
   addMealPlan: Repo['addMealPlan'] = (plan) =>
@@ -97,6 +104,13 @@ class LocalRepo implements Repo {
   deleteExtra: Repo['deleteExtra'] = (id) =>
     this.update((d) => {
       d.extras = d.extras.filter((e) => e.id !== id);
+    });
+
+  setChecks: Repo['setChecks'] = (checks, checked) =>
+    this.update((d) => {
+      const keys = new Set(checks.map(checkKey));
+      d.checks = d.checks.filter((c) => !keys.has(checkKey(c)));
+      if (checked) d.checks.push(...checks);
     });
 }
 

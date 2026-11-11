@@ -37,7 +37,7 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
           <Ionicons name="cloud-done-outline" size={56} color={colors.success} />
           <Text style={styles.subtitle}>{email}</Text>
           <Text style={[styles.muted, { textAlign: 'center' }]}>
-            Suas receitas, sua despensa e sua semana estão salvas na sua conta.
+            Suas receitas, sua semana e sua lista de compras estão salvas na sua conta.
           </Text>
         </View>
         <Button

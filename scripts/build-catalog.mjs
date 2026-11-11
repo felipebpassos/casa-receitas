@@ -22,7 +22,7 @@ const rows = catalog.map((i) => `  ('${i.id}', '${esc(i.name)}', '${esc(i.unit)}
 writeFileSync(
   sqlPath,
   `-- Gerado por scripts/build-catalog.mjs — não edite à mão.\n` +
-    `-- Catálogo global de ingredientes (created_by = null), com os mesmos IDs embutidos no app.\n` +
+    `-- Catálogo global de ingredientes, com os mesmos IDs embutidos no app.\n` +
     `insert into public.ingredients (id, name, default_unit) values\n${rows}\n` +
     `on conflict (id) do update set name = excluded.name, default_unit = excluded.default_unit;\n`,
 );

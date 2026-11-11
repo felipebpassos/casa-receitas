@@ -21,7 +21,7 @@ export async function searchPublicRecipes(q: string, excludeUserId: string | nul
 
 /** Busca a receita pública com todas as subreceitas e os nomes dos ingredientes usados. */
 export async function getPublicRecipeTree(id: string): Promise<PublicRecipeTree | null> {
-  const rootRes = await supabase.from('recipes').select(RECIPE_SELECT).eq('id', id).eq('is_public', true).maybeSingle();
+  const rootRes = await supabase.from('recipes').select(RECIPE_SELECT).eq('id', id).eq('status', 'APPROVED').maybeSingle();
   if (rootRes.error) throw serviceError({ ...rootRes.error, status: rootRes.status });
   if (!rootRes.data) return null;
   const rootRow = rootRes.data as unknown as RecipeRow;

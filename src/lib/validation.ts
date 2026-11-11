@@ -99,6 +99,14 @@ export const recipeSchema = yup.object({
   items: yup.array().of(recipeItemSchema).required().min(1, 'Adicione pelo menos um ingrediente.'),
 });
 
+// ---------------------------------------------- sugestão de ingrediente
+
+export const suggestionSchema = yup.object({
+  name: yup.string().trim().required('Informe o nome do ingrediente.').min(2).max(60),
+  unit: yup.string().nullable().default(null),
+  note: yup.string().trim().max(300).default(''),
+});
+
 // ------------------------------------------------- item extra das compras
 
 export const extraSchema = yup.object({

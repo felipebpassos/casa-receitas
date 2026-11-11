@@ -1,14 +1,24 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from '@/components/Toast';
-import { GLOBAL_CATALOG, GLOBAL_IDS } from '@/lib/catalog';
+import { fetchRemoteCatalog, GLOBAL_CATALOG, loadCachedCatalog, suggestIngredient as sendSuggestion } from '@/lib/catalog';
 import { UserFacingError } from '@/lib/errors';
 import { newId, nowIso } from '@/lib/ids';
 import { localRepo } from '@/lib/repo/localRepo';
 import { dependencyOrder, migrateLocalToRemote } from '@/lib/repo/migrate';
 import { RemoteRepo } from '@/lib/repo/remoteRepo';
 import type { Repo } from '@/lib/repo/types';
-import { normalizeName, parentsOf, type NeedsContext } from '@/lib/shopping';
-import { emptySnapshot, type Ingredient, type MealPlan, type PublicRecipeTree, type Recipe, type ShoppingExtra, type Snapshot } from '@/lib/types';
+import { parentsOf, type NeedsContext } from '@/lib/shopping';
+import {
+  checkKey,
+  emptySnapshot,
+  type Ingredient,
+  type MealPlan,
+  type PublicRecipeTree,
+  type Recipe,
+  type ShoppingCheck,
+  type ShoppingExtra,
+  type Snapshot,
+} from '@/lib/types';
 import { useAuth } from './AuthProvider';
 
 type DataState = {
@@ -25,10 +35,12 @@ type DataState = {
   reload: () => void;
   isGuest: boolean;
 
+  /** Catálogo global de ingredientes (o único permitido nas receitas). */
   catalog: Ingredient[];
+  getIngredient: (id: string) => Ingredient | undefined;
   ingredientName: (id: string) => string;
-  findIngredientByName: (name: string) => Ingredient | undefined;
-  addIngredient: (name: string) => Promise<Ingredient | null>;
+  /** Envia para moderação um ingrediente que falta no catálogo. Exige login. */
+  suggestIngredient: (name: string, unit: string | null, note: string | null) => Promise<boolean>;
 
   recipes: Recipe[];
   getRecipe: (id: string) => Recipe | undefined;
@@ -36,11 +48,6 @@ type DataState = {
   deleteRecipe: (id: string) => Promise<boolean>;
   findCopyOf: (publicRecipeId: string) => Recipe | undefined;
   saveCopy: (tree: PublicRecipeTree) => Promise<string | null>;
-
-  pantryIngredients: Set<string>;
-  pantryRecipes: Set<string>;
-  setHasIngredient: (id: string, has: boolean) => Promise<boolean>;
-  setHasRecipe: (id: string, has: boolean) => Promise<boolean>;
 
   mealPlans: MealPlan[];
   addMealPlan: (date: string, recipeId: string) => Promise<boolean>;
@@ -51,7 +58,11 @@ type DataState = {
   setExtraPurchased: (id: string, purchased: boolean) => Promise<boolean>;
   deleteExtra: (id: string) => Promise<boolean>;
 
-  /** Contexto de cálculo do "o que comprar" para as receitas da coleção. */
+  /** Itens riscados na lista de compras. */
+  isChecked: (check: ShoppingCheck) => boolean;
+  setChecked: (checks: ShoppingCheck[], checked: boolean) => Promise<boolean>;
+
+  /** Contexto de cálculo da lista de compras para as receitas da coleção. */
   needsContext: NeedsContext;
 };
 
@@ -65,11 +76,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const repo: Repo = useMemo(() => (userId ? new RemoteRepo(userId) : localRepo), [userId]);
 
   const [snap, setSnap] = useState<Snapshot>(emptySnapshot);
+  const [rawCatalog, setRawCatalog] = useState<Ingredient[]>(GLOBAL_CATALOG);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+
+  // Catálogo: o do cache na hora; o atualizado do servidor quando chegar (offline, fica o do cache).
+  useEffect(() => {
+    let cancelled = false;
+    loadCachedCatalog().then((c) => !cancelled && setRawCatalog(c));
+    fetchRemoteCatalog().then(
+      (c) => !cancelled && c?.length && setRawCatalog(c),
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadTick]);
 
   // Carrega os dados do modo atual (celular ou conta). No login, migra antes os dados locais.
   useEffect(() => {
@@ -101,33 +126,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [repo, key, authLoading, reloadTick]);
 
   // ---------------------------------------------------------------- derivados
-  const catalog = useMemo(() => [...GLOBAL_CATALOG, ...snap.customIngredients].sort(byName), [snap.customIngredients]);
+  const catalog = useMemo(() => [...rawCatalog].sort(byName), [rawCatalog]);
   const ingredientById = useMemo(() => new Map(catalog.map((i) => [i.id, i])), [catalog]);
   const recipeById = useMemo(() => new Map(snap.recipes.map((r) => [r.id, r])), [snap.recipes]);
   const recipes = useMemo(() => [...snap.recipes].sort(byName), [snap.recipes]);
-  const pantryIngredients = useMemo(() => new Set(snap.pantryIngredientIds), [snap.pantryIngredientIds]);
-  const pantryRecipes = useMemo(() => new Set(snap.pantryRecipeIds), [snap.pantryRecipeIds]);
+  const checkedKeys = useMemo(() => new Set(snap.checks.map(checkKey)), [snap.checks]);
 
+  const getIngredient = useCallback((id: string) => ingredientById.get(id), [ingredientById]);
   const ingredientName = useCallback((id: string) => ingredientById.get(id)?.name ?? 'Ingrediente', [ingredientById]);
   const getRecipe = useCallback((id: string) => recipeById.get(id), [recipeById]);
-  const findIngredientByName = useCallback(
-    (name: string) => {
-      const n = normalizeName(name);
-      return catalog.find((i) => normalizeName(i.name) === n);
-    },
-    [catalog],
-  );
   const findCopyOf = useCallback((publicId: string) => snap.recipes.find((r) => r.originRecipeId === publicId), [snap.recipes]);
+  const isChecked = useCallback((c: ShoppingCheck) => checkedKeys.has(checkKey(c)), [checkedKeys]);
 
-  const needsContext = useMemo<NeedsContext>(
-    () => ({
-      getRecipe: (id) => recipeById.get(id),
-      ingredientName,
-      hasIngredient: (id) => pantryIngredients.has(id),
-      hasRecipe: (id) => pantryRecipes.has(id),
-    }),
-    [recipeById, ingredientName, pantryIngredients, pantryRecipes],
-  );
+  const needsContext = useMemo<NeedsContext>(() => ({ getRecipe: (id) => recipeById.get(id), ingredientName }), [recipeById, ingredientName]);
 
   // ----------------------------------------------------------------- mutações
   /** Aplica a mudança na tela na hora e grava; se falhar, avisa e recarrega do armazenamento. */
@@ -146,20 +157,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [repo],
   );
 
-  const addIngredient = useCallback(
-    async (name: string) => {
-      const existing = findIngredientByName(name);
-      if (existing) return existing;
-      const ingredient: Ingredient = { id: newId(), name: name.trim(), unit: null, custom: true };
-      const ok = await run((s) => ({ ...s, customIngredients: [...s.customIngredients, ingredient] }), () => repo.createIngredient(ingredient));
-      return ok ? ingredient : null;
+  const suggestIngredient = useCallback(
+    async (name: string, unit: string | null, note: string | null) => {
+      if (!userId) {
+        toast.error(new UserFacingError('Entre na sua conta para sugerir ingredientes.', 'Faça login'));
+        return false;
+      }
+      try {
+        await sendSuggestion({ name: name.trim(), unit, note: note?.trim() || null });
+        return true;
+      } catch (e) {
+        toast.error(e, { title: 'Não foi possível enviar a sugestão' });
+        return false;
+      }
     },
-    [findIngredientByName, repo, run],
+    [userId],
   );
 
   const saveRecipe = useCallback(
     async (recipe: Recipe) => {
-      const toSave: Recipe = { ...recipe, isPublic: userId ? recipe.isPublic : false, updatedAt: nowIso() };
+      const submitted = !!userId && (recipe.status === 'PENDING' || recipe.status === 'APPROVED');
+      const toSave: Recipe = {
+        ...recipe,
+        // Enviar (ou alterar uma receita aprovada) sempre volta para análise.
+        status: submitted ? 'PENDING' : 'PRIVATE',
+        rejectionReason: submitted ? null : recipe.rejectionReason,
+        updatedAt: nowIso(),
+      };
       const ok = await run(
         (s) => {
           const exists = s.recipes.some((r) => r.id === toSave.id);
@@ -167,8 +191,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         },
         () => repo.saveRecipe(toSave),
       );
-      // Ao publicar, o servidor também publica as subreceitas: recarrega para refletir.
-      if (ok && toSave.isPublic && toSave.items.some((i) => i.subRecipeId)) repo.loadAll().then(setSnap, () => undefined);
+      // Ao enviar, o servidor também envia as subreceitas: recarrega para refletir.
+      if (ok && submitted && toSave.items.some((i) => i.subRecipeId)) repo.loadAll().then(setSnap, () => undefined);
       return ok;
     },
     [repo, run, userId],
@@ -188,7 +212,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ...s,
           recipes: s.recipes.filter((r) => r.id !== id),
           mealPlans: s.mealPlans.filter((p) => p.recipeId !== id),
-          pantryRecipeIds: s.pantryRecipeIds.filter((r) => r !== id),
+          checks: s.checks.filter((c) => c.recipeId !== id),
         }),
         () => repo.deleteRecipe(id),
       );
@@ -203,27 +227,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (already) return already.id;
 
       try {
-        // Ingredientes: globais mantêm o ID; personalizados de outra pessoa viram seus (pelo nome).
-        const ingredientMap = new Map<string, string>();
-        const created: Ingredient[] = [];
-        for (const [id, name] of Object.entries(tree.ingredientNames)) {
-          if (GLOBAL_IDS.has(id)) {
-            ingredientMap.set(id, id);
-            continue;
-          }
-          const n = normalizeName(name);
-          const mine = catalog.find((i) => normalizeName(i.name) === n) ?? created.find((i) => normalizeName(i.name) === n);
-          if (mine) {
-            ingredientMap.set(id, mine.id);
-          } else {
-            const ingredient: Ingredient = { id: newId(), name, unit: null, custom: true };
-            await repo.createIngredient(ingredient);
-            created.push(ingredient);
-            ingredientMap.set(id, ingredient.id);
-          }
-        }
-
-        // Receitas: reaproveita cópias de subreceitas que você já salvou.
+        // Receitas: reaproveita cópias de subreceitas que você já salvou. Ingredientes são do catálogo (mesmo ID).
         const originals = [tree.root, ...Object.values(tree.subs)];
         const recipeMap = new Map<string, string>();
         for (const r of originals) recipeMap.set(r.id, findCopyOf(r.id)?.id ?? newId());
@@ -235,26 +239,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
             (r): Recipe => ({
               ...r,
               id: recipeMap.get(r.id)!,
-              isPublic: false,
+              status: 'PRIVATE',
+              rejectionReason: null,
               originRecipeId: r.id,
               originAuthorName: tree.authorName,
               createdAt: now,
               updatedAt: now,
               items: r.items.map((i) => ({
                 id: newId(),
-                ingredientId: i.ingredientId ? ingredientMap.get(i.ingredientId) ?? i.ingredientId : null,
+                ingredientId: i.ingredientId,
                 subRecipeId: i.subRecipeId ? recipeMap.get(i.subRecipeId) ?? null : null,
                 quantity: i.quantity,
                 unit: i.unit,
               })),
             }),
           )
-          // Subreceita que não veio na árvore (ex.: ficou privada) é descartada do item.
+          // Subreceita que não veio na árvore (ex.: deixou de ser pública) é descartada do item.
           .map((r) => ({ ...r, items: r.items.filter((i) => i.ingredientId || i.subRecipeId) }));
 
         for (const copy of dependencyOrder(copies)) await repo.saveRecipe(copy);
 
-        setSnap((s) => ({ ...s, customIngredients: [...s.customIngredients, ...created], recipes: [...s.recipes, ...copies] }));
+        setSnap((s) => ({ ...s, recipes: [...s.recipes, ...copies] }));
         return recipeMap.get(tree.root.id)!;
       } catch (e) {
         toast.error(e, { title: 'Não foi possível salvar a receita' });
@@ -262,25 +267,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return null;
       }
     },
-    [catalog, findCopyOf, repo],
-  );
-
-  const setHasIngredient = useCallback(
-    (id: string, has: boolean) =>
-      run(
-        (s) => ({ ...s, pantryIngredientIds: has ? [...s.pantryIngredientIds.filter((i) => i !== id), id] : s.pantryIngredientIds.filter((i) => i !== id) }),
-        () => repo.setPantryIngredient(id, has),
-      ),
-    [repo, run],
-  );
-
-  const setHasRecipe = useCallback(
-    (id: string, has: boolean) =>
-      run(
-        (s) => ({ ...s, pantryRecipeIds: has ? [...s.pantryRecipeIds.filter((i) => i !== id), id] : s.pantryRecipeIds.filter((i) => i !== id) }),
-        () => repo.setPantryRecipe(id, has),
-      ),
-    [repo, run],
+    [findCopyOf, repo],
   );
 
   const addMealPlan = useCallback(
@@ -315,6 +302,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [repo, run],
   );
 
+  const setChecked = useCallback(
+    (checks: ShoppingCheck[], checked: boolean) => {
+      const keys = new Set(checks.map(checkKey));
+      return run(
+        (s) => {
+          const rest = s.checks.filter((c) => !keys.has(checkKey(c)));
+          return { ...s, checks: checked ? [...rest, ...checks] : rest };
+        },
+        () => repo.setChecks(checks, checked),
+      );
+    },
+    [repo, run],
+  );
+
   const value: DataState = {
     ready: loadedKey === key,
     initialized: loadedKey !== null,
@@ -327,19 +328,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     isGuest: !userId,
     catalog,
+    getIngredient,
     ingredientName,
-    findIngredientByName,
-    addIngredient,
+    suggestIngredient,
     recipes,
     getRecipe,
     saveRecipe,
     deleteRecipe,
     findCopyOf,
     saveCopy,
-    pantryIngredients,
-    pantryRecipes,
-    setHasIngredient,
-    setHasRecipe,
     mealPlans: snap.mealPlans,
     addMealPlan,
     removeMealPlan,
@@ -347,6 +344,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addExtra,
     setExtraPurchased,
     deleteExtra,
+    isChecked,
+    setChecked,
     needsContext,
   };
 

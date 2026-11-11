@@ -55,7 +55,7 @@ function RecipeForm() {
   const [description, setDescription] = useState(existing?.description ?? '');
   const [preparation, setPreparation] = useState(existing?.preparation ?? '');
   const [source, setSource] = useState(existing?.sourceUrl ?? '');
-  const [isPublic, setIsPublic] = useState(existing?.isPublic ?? false);
+  const [submit, setSubmit] = useState(existing?.status === 'PENDING' || existing?.status === 'APPROVED');
   const [rows, setRows] = useState<Row[]>(() =>
     toRows(existing, (i) => (i.ingredientId ? data.ingredientName(i.ingredientId) : data.getRecipe(i.subRecipeId!)?.name ?? 'Receita')),
   );
@@ -70,7 +70,8 @@ function RecipeForm() {
 
   const addIngredient = (ingredient: Ingredient) => {
     setPicking(false);
-    setRows((prev) => [...prev, { key: newId(), ingredientId: ingredient.id, subRecipeId: null, name: ingredient.name, quantity: '', unit: ingredient.unit ?? 'unidade' }]);
+    const unit = ingredient.unit ?? ingredient.allowedUnits?.[0] ?? 'unidade';
+    setRows((prev) => [...prev, { key: newId(), ingredientId: ingredient.id, subRecipeId: null, name: ingredient.name, quantity: '', unit }]);
   };
 
   const addSubRecipe = (recipe: Recipe) => {
@@ -100,7 +101,8 @@ function RecipeForm() {
       preparation: v.preparation || null,
       sourceUrl: parsedSource?.url ?? null,
       sourcePlatform: parsedSource?.platform ?? null,
-      isPublic: isPublic && !isCopy && !data.isGuest,
+      status: submit && !isCopy && !data.isGuest ? 'PENDING' : 'PRIVATE',
+      rejectionReason: existing?.rejectionReason ?? null,
       originRecipeId: existing?.originRecipeId ?? null,
       originAuthorName: existing?.originAuthorName ?? null,
       createdAt: existing?.createdAt ?? now,
@@ -121,7 +123,10 @@ function RecipeForm() {
     const ok = await data.saveRecipe(recipe);
     setSaving(false);
     if (!ok) return;
-    toast.success(isEdit ? 'Alterações salvas' : 'Receita cadastrada', recipe.isPublic ? 'Ela já aparece na biblioteca pública.' : undefined);
+    toast.success(
+      recipe.status === 'PENDING' ? 'Enviada para aprovação' : isEdit ? 'Alterações salvas' : 'Receita cadastrada',
+      recipe.status === 'PENDING' ? 'Você já pode usá-la na sua semana. Ela aparece na biblioteca depois de aprovada.' : undefined,
+    );
     if (isEdit) router.back();
     else router.replace({ pathname: '/recipe/[id]', params: { id: recipe.id } });
   };
@@ -148,7 +153,7 @@ function RecipeForm() {
                   <Text style={[styles.subtitle, { flex: 1 }]}>{row.name}</Text>
                   <IconButton name="trash-outline" label={`Remover ${row.name}`} color={colors.danger} onPress={() => removeRow(row.key)} />
                 </View>
-                <Text style={styles.muted}>Receita usada como ingrediente. Se não tiver pronta em casa, os ingredientes dela entram na lista.</Text>
+                <Text style={styles.muted}>Receita usada como ingrediente. Na lista de compras, os ingredientes dela aparecem num grupo separado.</Text>
                 <View style={styles.row}>
                   <Input
                     value={row.quantity}
@@ -184,7 +189,11 @@ function RecipeForm() {
                     />
                   )}
                   <View style={{ flex: 1 }}>
-                    <ChipSelect options={UNITS} value={row.unit} onChange={(u) => updateRow(row.key, { unit: u })} />
+                    <ChipSelect
+                      options={unitOptions(data.getIngredient(row.ingredientId!)?.allowedUnits)}
+                      value={row.unit}
+                      onChange={(u) => updateRow(row.key, { unit: u })}
+                    />
                   </View>
                 </View>
                 <FieldError message={qtyError} />
@@ -221,7 +230,7 @@ function RecipeForm() {
           />
         </Field>
 
-        <PublicSwitch isGuest={data.isGuest} isCopy={isCopy} value={isPublic} onChange={setIsPublic} />
+        <SubmitSwitch isGuest={data.isGuest} isCopy={isCopy} existing={existing} value={submit} onChange={setSubmit} />
 
         <Button title={isEdit ? 'Salvar alterações' : 'Cadastrar receita'} icon="checkmark" onPress={save} loading={saving} />
       </ScrollView>
@@ -237,7 +246,25 @@ function RecipeForm() {
   );
 }
 
-function PublicSwitch({ isGuest, isCopy, value, onChange }: { isGuest: boolean; isCopy: boolean; value: boolean; onChange: (v: boolean) => void }) {
+/** Unidades do ingrediente no catálogo (todas, se ele não restringir). "A gosto" sempre vale. */
+function unitOptions(allowed: string[] | null | undefined): readonly string[] {
+  if (!allowed?.length) return UNITS;
+  return allowed.includes(NO_QUANTITY_UNIT) ? allowed : [...allowed, NO_QUANTITY_UNIT];
+}
+
+function SubmitSwitch({
+  isGuest,
+  isCopy,
+  existing,
+  value,
+  onChange,
+}: {
+  isGuest: boolean;
+  isCopy: boolean;
+  existing: Recipe | undefined;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
   if (isCopy) {
     return <Text style={styles.muted}>Receitas salvas de outras pessoas ficam só no seu caderno de receitas e não podem ser publicadas.</Text>;
   }
@@ -250,15 +277,30 @@ function PublicSwitch({ isGuest, isCopy, value, onChange }: { isGuest: boolean; 
       </Pressable>
     );
   }
+  const wasApproved = existing?.status === 'APPROVED';
+  const hint = !value
+    ? wasApproved
+      ? 'Ao salvar, ela sai da biblioteca e fica visível apenas para você.'
+      : 'Visível apenas para você.'
+    : wasApproved
+      ? 'Já está na biblioteca. Ao salvar alterações, ela volta para análise.'
+      : 'Depois de aprovada pela moderação, aparece na biblioteca para outras pessoas (as receitas usadas nela também).';
   return (
-    <View style={[styles.card, styles.row]}>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.subtitle}>Receita pública</Text>
-        <Text style={styles.muted}>
-          {value ? 'Aparece na biblioteca para outras pessoas (as receitas usadas nela também).' : 'Visível apenas para você.'}
-        </Text>
+    <View style={{ gap: spacing.sm }}>
+      {existing?.status === 'REJECTED' && (
+        <View style={[styles.card, { borderColor: colors.danger, backgroundColor: colors.dangerLight, gap: spacing.xs }]}>
+          <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovada para a biblioteca</Text>
+          <Text style={styles.body}>{existing.rejectionReason || 'Sem motivo informado.'}</Text>
+          <Text style={styles.muted}>Ajuste a receita e envie de novo, se quiser.</Text>
+        </View>
+      )}
+      <View style={[styles.card, styles.row]}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.subtitle}>Enviar para a biblioteca pública</Text>
+          <Text style={styles.muted}>{hint}</Text>
+        </View>
+        <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary }} />
       </View>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary }} />
     </View>
   );
 }

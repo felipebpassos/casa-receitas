@@ -1,4 +1,3 @@
-import { normalizeName } from '../shopping';
 import type { Recipe } from '../types';
 import { localRepo } from './localRepo';
 import type { RemoteRepo } from './remoteRepo';
@@ -12,37 +11,34 @@ export async function migrateLocalToRemote(remote: RemoteRepo): Promise<boolean>
   if (await localRepo.isEmpty()) return false;
 
   const local = await localRepo.loadAll();
-  const existing = await remote.loadAll();
+  const recipes = withoutEmpty(local.recipes);
+  const kept = new Set(recipes.map((r) => r.id));
 
-  // Ingredientes personalizados: reaproveita os que já existem na conta (mesmo nome).
-  const ingredientMap = new Map<string, string>();
-  for (const ing of local.customIngredients) {
-    const same = existing.customIngredients.find((e) => normalizeName(e.name) === normalizeName(ing.name));
-    if (same) {
-      ingredientMap.set(ing.id, same.id);
-    } else {
-      await remote.createIngredient(ing);
-      ingredientMap.set(ing.id, ing.id);
-    }
-  }
-  const mapIng = (id: string) => ingredientMap.get(id) ?? id;
+  // Receitas: subreceitas antes de quem as usa. Sem login, tudo é privado.
+  for (const recipe of dependencyOrder(recipes)) await remote.saveRecipe({ ...recipe, status: 'PRIVATE' });
 
-  // Receitas: subreceitas antes de quem as usa.
-  for (const recipe of dependencyOrder(local.recipes)) {
-    await remote.saveRecipe({
-      ...recipe,
-      isPublic: false,
-      items: recipe.items.map((i) => ({ ...i, ingredientId: i.ingredientId ? mapIng(i.ingredientId) : null })),
-    });
-  }
-
-  for (const id of local.pantryIngredientIds) await remote.setPantryIngredient(mapIng(id), true);
-  for (const id of local.pantryRecipeIds) await remote.setPantryRecipe(id, true);
-  for (const plan of local.mealPlans) await remote.addMealPlan(plan);
+  for (const plan of local.mealPlans) if (kept.has(plan.recipeId)) await remote.addMealPlan(plan);
   for (const extra of local.extras) await remote.addExtra(extra);
+  await remote.setChecks(local.checks.filter((c) => kept.has(c.recipeId)), true);
 
   await localRepo.clear();
   return true;
+}
+
+/**
+ * Tira receitas que ficaram sem itens (ex.: só tinham ingredientes personalizados
+ * de versões antigas, que não existem no catálogo) e as referências a elas.
+ */
+function withoutEmpty(recipes: Recipe[]): Recipe[] {
+  let list = recipes;
+  for (;;) {
+    const ids = new Set(list.map((r) => r.id));
+    const next = list
+      .map((r) => ({ ...r, items: r.items.filter((i) => !i.subRecipeId || ids.has(i.subRecipeId)) }))
+      .filter((r) => r.items.length > 0);
+    if (next.length === list.length && next.every((r, i) => r.items.length === list[i].items.length)) return next;
+    list = next;
+  }
 }
 
 /** Ordena as receitas de forma que toda subreceita venha antes da receita que a usa. */

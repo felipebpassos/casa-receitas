@@ -1,9 +1,10 @@
+/** Ingrediente do catálogo global (o mesmo para todos; ninguém cria ingrediente pelo app). */
 export type Ingredient = {
   id: string;
   name: string;
   unit: string | null;
-  /** true = criado pelo usuário; false = catálogo global. */
-  custom: boolean;
+  /** Unidades aceitas na receita; null = todas. */
+  allowedUnits: string[] | null;
 };
 
 /** Um item é um ingrediente OU uma subreceita. */
@@ -15,6 +16,12 @@ export type RecipeItem = {
   unit: string | null;
 };
 
+/**
+ * PRIVATE: só para você. PENDING: enviada para a biblioteca, aguardando moderação.
+ * APPROVED: aparece na biblioteca. REJECTED: recusada (veja rejectionReason).
+ */
+export type RecipeStatus = 'PRIVATE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+
 export type Recipe = {
   id: string;
   name: string;
@@ -23,7 +30,8 @@ export type Recipe = {
   /** Link do vídeo/receita original (YouTube, Instagram, TikTok...). */
   sourceUrl: string | null;
   sourcePlatform: string | null;
-  isPublic: boolean;
+  status: RecipeStatus;
+  rejectionReason: string | null;
   /** Preenchidos quando é uma cópia salva da receita pública de outra pessoa. */
   originRecipeId: string | null;
   originAuthorName: string | null;
@@ -47,23 +55,30 @@ export type ShoppingExtra = {
   purchased: boolean;
 };
 
+/** Item riscado na lista de compras da semana (no grupo da receita/subpreparo `recipeId`). */
+export type ShoppingCheck = {
+  weekStart: string;
+  recipeId: string;
+  ingredientId: string;
+  /** Unidade normalizada (kg→g, l→ml); '' quando não há. */
+  unit: string;
+};
+
+export const checkKey = (c: ShoppingCheck) => `${c.weekStart}|${c.recipeId}|${c.ingredientId}|${c.unit}`;
+
 /** Todos os dados do usuário (no celular ou na conta). */
 export type Snapshot = {
-  customIngredients: Ingredient[];
   recipes: Recipe[];
-  pantryIngredientIds: string[];
-  pantryRecipeIds: string[];
   mealPlans: MealPlan[];
   extras: ShoppingExtra[];
+  checks: ShoppingCheck[];
 };
 
 export const emptySnapshot = (): Snapshot => ({
-  customIngredients: [],
   recipes: [],
-  pantryIngredientIds: [],
-  pantryRecipeIds: [],
   mealPlans: [],
   extras: [],
+  checks: [],
 });
 
 /** Receita pública de outra pessoa, com as subreceitas e nomes de ingredientes necessários. */

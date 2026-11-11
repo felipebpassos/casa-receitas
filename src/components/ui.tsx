@@ -209,9 +209,16 @@ export function ChipSelect({ options, value, onChange }: { options: readonly str
   );
 }
 
-export function Badge({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'success' | 'accent' }) {
-  const bg = tone === 'success' ? colors.successLight : tone === 'accent' ? colors.accentLight : colors.surface;
-  const fg = tone === 'success' ? colors.success : tone === 'accent' ? colors.accent : colors.muted;
+const badgeTones = {
+  neutral: { bg: colors.surface, fg: colors.muted },
+  success: { bg: colors.successLight, fg: colors.success },
+  accent: { bg: colors.accentLight, fg: colors.accent },
+  warning: { bg: colors.warningLight, fg: colors.warning },
+  danger: { bg: colors.dangerLight, fg: colors.danger },
+};
+
+export function Badge({ label, tone = 'neutral' }: { label: string; tone?: keyof typeof badgeTones }) {
+  const { bg, fg } = badgeTones[tone];
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       <Text style={[styles.badgeText, { color: fg }]}>{label}</Text>
