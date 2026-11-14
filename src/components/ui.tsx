@@ -64,6 +64,8 @@ const buttonVariants = {
   /** Confirmação de ação perigosa (preenchido). */
   destructive: { bg: colors.danger, fg: colors.onPrimary, border: colors.danger },
   ghost: { bg: 'transparent', fg: colors.primary, border: 'transparent' },
+  /** Ação perigosa discreta (ex.: excluir no fim da tela). */
+  dangerGhost: { bg: 'transparent', fg: colors.danger, border: 'transparent' },
   neutral: { bg: colors.card, fg: colors.text, border: colors.border },
 };
 
