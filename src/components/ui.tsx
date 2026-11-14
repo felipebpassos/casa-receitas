@@ -1,7 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -189,6 +191,48 @@ export function Segmented<T extends string>({
   );
 }
 
+const TOGGLE = { width: 52, height: 32, thumb: 26, pad: 3 };
+
+/**
+ * Interruptor liga/desliga com o mesmo visual em todas as plataformas
+ * (o Switch nativo quase some no fundo claro, principalmente na web).
+ * Sem `onChange` ele é só visual: use dentro de uma linha inteira clicável.
+ */
+export function Toggle({ value, onChange }: { value: boolean; onChange?: (v: boolean) => void }) {
+  const [anim] = useState(() => new Animated.Value(value ? 1 : 0));
+  useEffect(() => {
+    Animated.timing(anim, { toValue: value ? 1 : 0, duration: 160, useNativeDriver: false }).start();
+  }, [anim, value]);
+
+  const track = (
+    <Animated.View
+      style={[
+        styles.toggleTrack,
+        { backgroundColor: anim.interpolate({ inputRange: [0, 1], outputRange: [colors.toggleOff, colors.primary] }) },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.toggleThumb,
+          { transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [0, TOGGLE.width - TOGGLE.thumb - TOGGLE.pad * 2] }) }] },
+        ]}
+      />
+    </Animated.View>
+  );
+  if (!onChange) return track;
+  return (
+    <Pressable onPress={() => onChange(!value)} hitSlop={8} accessibilityRole="switch" accessibilityState={{ checked: value }}>
+      {track}
+    </Pressable>
+  );
+}
+
+/** Barra fixa no rodapé para as ações principais da tela. */
+export function BottomBar({ children }: { children: ReactNode }) {
+  const insets = useSafeAreaInsets();
+  return <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>{children}</View>;
+}
+
 export function Checkbox({ checked }: { checked: boolean }) {
   return (
     <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
@@ -349,4 +393,20 @@ export const styles = StyleSheet.create({
   emptyTitle: { fontSize: 17, fontFamily: fonts.serifSemiBold, color: colors.text, textAlign: 'center' },
   emptySubtitle: { fontSize: 14, color: colors.muted, textAlign: 'center' },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  toggleTrack: { width: TOGGLE.width, height: TOGGLE.height, borderRadius: radius.pill, padding: TOGGLE.pad, justifyContent: 'center' },
+  toggleThumb: {
+    width: TOGGLE.thumb,
+    height: TOGGLE.thumb,
+    borderRadius: TOGGLE.thumb / 2,
+    backgroundColor: colors.onPrimary,
+    boxShadow: '0 1px 3px rgba(61, 52, 46, 0.35)',
+  },
+  bottomBar: {
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    backgroundColor: colors.background,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
 });

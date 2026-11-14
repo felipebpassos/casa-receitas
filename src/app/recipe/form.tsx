@@ -1,14 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ItemPicker } from '@/components/ItemPicker';
-import { colors, spacing } from '@/components/theme';
+import { RichTextField } from '@/components/RichTextField';
+import { colors, fonts, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
-import { Button, ChipSelect, EmptyState, Field, FieldError, IconButton, Input, styles } from '@/components/ui';
+import { BottomBar, Button, ChipSelect, EmptyState, Field, FieldError, IconButton, Input, styles, Toggle } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { newId, nowIso } from '@/lib/ids';
+import { sanitizeRichText } from '@/lib/richText';
 import { allowedSubRecipes, UNITS } from '@/lib/shopping';
 import { PLATFORM_LABEL, parseSource } from '@/lib/source';
 import type { Ingredient, Recipe } from '@/lib/types';
@@ -53,7 +55,9 @@ function RecipeForm() {
   const [recipeId] = useState(() => existing?.id ?? newId());
   const [name, setName] = useState(existing?.name ?? '');
   const [description, setDescription] = useState(existing?.description ?? '');
-  const [preparation, setPreparation] = useState(existing?.preparation ?? '');
+  // Receitas antigas (texto puro) já abrem convertidas em HTML no editor.
+  const [initialPreparation] = useState(() => sanitizeRichText(existing?.preparation));
+  const [preparation, setPreparation] = useState(initialPreparation);
   const [source, setSource] = useState(existing?.sourceUrl ?? '');
   const [submit, setSubmit] = useState(existing?.status === 'PENDING' || existing?.status === 'APPROVED');
   const [rows, setRows] = useState<Row[]>(() =>
@@ -82,7 +86,8 @@ function RecipeForm() {
   const updateRow = (key: string, patch: Partial<Row>) => setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const removeRow = (key: string) => setRows((prev) => prev.filter((r) => r.key !== key));
 
-  const form = useFormValidation(recipeSchema, { name, description, preparation, source, items: rows });
+  const cleanPreparation = useMemo(() => sanitizeRichText(preparation), [preparation]);
+  const form = useFormValidation(recipeSchema, { name, description, preparation: cleanPreparation, source, items: rows });
   const { errors } = form;
 
   const save = async () => {
@@ -133,8 +138,16 @@ function RecipeForm() {
 
   return (
     <>
-      <Stack.Screen options={{ title: isEdit ? 'Editar receita' : 'Nova receita' }} />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: 64 }} keyboardShouldPersistTaps="handled">
+      <Stack.Screen
+        options={{
+          title: isEdit ? 'Editar receita' : 'Nova receita',
+          headerTitleAlign: 'left',
+          headerTitleStyle: { fontFamily: fonts.serifSemiBold, fontSize: 21 },
+        }}
+      />
+      {/* Divisória entre o header e o conteúdo */}
+      <View style={styles.separator} />
+      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
         <Field label="Nome *" error={errors.name}>
           <Input value={name} onChangeText={setName} placeholder="Ex.: Lasanha à bolonhesa" invalid={!!errors.name} maxLength={120} />
         </Field>
@@ -205,13 +218,11 @@ function RecipeForm() {
         </View>
 
         <Field label="Modo de preparo" error={errors.preparation}>
-          <Input
-            value={preparation}
-            onChangeText={setPreparation}
+          <RichTextField
+            initialValue={initialPreparation}
+            onChange={setPreparation}
             placeholder="Descreva o passo a passo"
-            multiline
             invalid={!!errors.preparation}
-            style={{ minHeight: 140, textAlignVertical: 'top' }}
           />
         </Field>
 
@@ -231,9 +242,11 @@ function RecipeForm() {
         </Field>
 
         <SubmitSwitch isGuest={data.isGuest} isCopy={isCopy} existing={existing} value={submit} onChange={setSubmit} />
-
-        <Button title={isEdit ? 'Salvar alterações' : 'Cadastrar receita'} icon="checkmark" onPress={save} loading={saving} />
       </ScrollView>
+
+      <BottomBar>
+        <Button title={isEdit ? 'Salvar alterações' : 'Cadastrar receita'} icon="checkmark" onPress={save} loading={saving} />
+      </BottomBar>
 
       <ItemPicker
         visible={picking}
@@ -245,6 +258,17 @@ function RecipeForm() {
     </>
   );
 }
+
+const local = StyleSheet.create({
+  publishIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 /** Unidades do ingrediente no catálogo (todas, se ele não restringir). "A gosto" sempre vale. */
 function unitOptions(allowed: string[] | null | undefined): readonly string[] {
@@ -294,13 +318,28 @@ function SubmitSwitch({
           <Text style={styles.muted}>Ajuste a receita e envie de novo, se quiser.</Text>
         </View>
       )}
-      <View style={[styles.card, styles.row]}>
-        <View style={{ flex: 1 }}>
+      <Pressable
+        onPress={() => onChange(!value)}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: value }}
+        accessibilityLabel="Publicar receita"
+        style={({ pressed }) => [
+          styles.card,
+          styles.row,
+          { gap: spacing.md },
+          value && { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <View style={[local.publishIcon, value && { backgroundColor: colors.card }]}>
+          <Ionicons name={value ? 'globe-outline' : 'lock-closed-outline'} size={20} color={value ? colors.primary : colors.muted} />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
           <Text style={styles.subtitle}>Publicar receita</Text>
           <Text style={styles.muted}>{hint}</Text>
         </View>
-        <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary }} />
-      </View>
+        <Toggle value={value} />
+      </Pressable>
     </View>
   );
 }

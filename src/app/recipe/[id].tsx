@@ -2,18 +2,19 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { confirm } from '@/components/ConfirmDialog';
 import { DayPicker } from '@/components/DayPicker';
+import { RichText } from '@/components/RichText';
 import { StatusBadge } from '@/components/StatusBadge';
 import { colors, fonts, radius, spacing } from '@/components/theme';
 import { ErrorView } from '@/components/ErrorState';
 import { toast } from '@/components/Toast';
-import { Button, EmptyState, Loading, styles } from '@/components/ui';
+import { BottomBar, Button, EmptyState, Loading, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
 import { formatShort, weekdayName } from '@/lib/dates';
 import { UserFacingError } from '@/lib/errors';
 import { getPublicRecipeTree } from '@/lib/publicLibrary';
+import { parseRichText } from '@/lib/richText';
 import { formatQuantity, type NeedsContext } from '@/lib/shopping';
 import { PLATFORM_ICON, PLATFORM_LABEL, platformOf } from '@/lib/source';
 import type { PublicRecipeTree, Recipe, RecipeStatus } from '@/lib/types';
@@ -70,7 +71,6 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   const data = useData();
   const [pickingDay, setPickingDay] = useState(false);
   const [busy, setBusy] = useState(false);
-  const insets = useSafeAreaInsets();
   const isPublicView = !!tree;
   // Receita salva de outra pessoa: fica na coleção, mas somente leitura.
   const isSavedCopy = !isPublicView && !!recipe.originRecipeId;
@@ -154,10 +154,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   const isOwn = !isPublicView && !isSavedCopy;
   const ingredients = recipe.items.filter((i) => !i.subRecipeId);
   const subItems = recipe.items.filter((i) => i.subRecipeId);
-  const steps = (recipe.preparation ?? '')
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const hasPreparation = parseRichText(recipe.preparation).length > 0;
   const openSource = () =>
     Linking.openURL(recipe.sourceUrl!).catch(() => toast.error(new UserFacingError('Não foi possível abrir este link.', 'Link inválido')));
 
@@ -256,21 +253,10 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
           </Section>
         )}
 
-        {steps.length > 0 && (
+        {hasPreparation && (
           <Section title="Modo de preparo">
-            <View style={[styles.card, { gap: spacing.md }]}>
-              {steps.length === 1 ? (
-                <Text style={styles.body}>{steps[0]}</Text>
-              ) : (
-                steps.map((step, idx) => (
-                  <View key={idx} style={{ flexDirection: 'row', gap: spacing.md }}>
-                    <View style={local.stepNumber}>
-                      <Text style={local.stepNumberText}>{idx + 1}</Text>
-                    </View>
-                    <Text style={[styles.body, { flex: 1 }]}>{step}</Text>
-                  </View>
-                ))
-              )}
+            <View style={styles.card}>
+              <RichText value={recipe.preparation} />
             </View>
           </Section>
         )}
@@ -279,7 +265,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
       </ScrollView>
 
       {/* Ações principais, sempre à mão */}
-      <View style={[local.bottomBar, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>
+      <BottomBar>
         <Button title="Adicionar à semana" icon="calendar-outline" loading={busy} onPress={() => setPickingDay(true)} />
         {recipe.sourceUrl ? (
           <Button
@@ -289,7 +275,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
             onPress={openSource}
           />
         ) : null}
-      </View>
+      </BottomBar>
 
       <DayPicker visible={pickingDay} title={`Planejar "${recipe.name}"`} onClose={() => setPickingDay(false)} onSelect={addToWeek} />
     </>
@@ -372,16 +358,6 @@ const local = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  stepNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -1,
-  },
-  stepNumberText: { fontSize: 13, fontWeight: '700', color: colors.primary },
   headerAction: {
     width: 40,
     height: 40,
@@ -392,13 +368,5 @@ const local = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     marginRight: spacing.sm,
-  },
-  bottomBar: {
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    backgroundColor: colors.background,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
   },
 });

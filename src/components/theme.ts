@@ -15,6 +15,8 @@ export const colors = {
   background: '#F9F5EA',
   card: '#FFFDF8',
   surface: '#EFE8D9',
+  /** Trilho do interruptor desligado (contraste ≥ 3:1 com o card). */
+  toggleOff: '#9A8E82',
   danger: '#B3261E',
   dangerLight: '#F9E3DF',
   /** Avisos que não são culpa de ninguém (ex.: sem internet). */
