@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { ComponentProps, ReactNode } from 'react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -118,6 +118,24 @@ export function Input({ invalid, ...props }: TextInputProps & { invalid?: boolea
       {...props}
       style={[styles.input, invalid && styles.inputInvalid, props.style]}
     />
+  );
+}
+
+/** Campo de senha com botão de olho para mostrar/ocultar o texto. */
+export function PasswordInput(props: Omit<TextInputProps, 'secureTextEntry'> & { invalid?: boolean }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <View style={{ justifyContent: 'center' }}>
+      <Input {...props} secureTextEntry={!visible} style={[{ paddingRight: 44 }, props.style]} />
+      <View style={{ position: 'absolute', right: spacing.sm }}>
+        <IconButton
+          name={visible ? 'eye-off-outline' : 'eye-outline'}
+          label={visible ? 'Ocultar senha' : 'Mostrar senha'}
+          size={20}
+          onPress={() => setVisible((v) => !v)}
+        />
+      </View>
+    </View>
   );
 }
 

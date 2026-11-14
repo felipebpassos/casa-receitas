@@ -115,7 +115,7 @@ export function ItemPicker({
                 onPickRecipe(item);
               }}
             >
-              <Ionicons name="book-outline" size={18} color={colors.success} />
+              <Ionicons name="book-outline" size={18} color={colors.olive} />
               <Text style={[styles.body, { flex: 1 }]}>{item.name}</Text>
             </Row>
           )}

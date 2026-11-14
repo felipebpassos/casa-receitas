@@ -7,7 +7,7 @@ export function StatusBadge({ status }: { status: RecipeStatus }) {
     case 'PENDING':
       return <Badge label="em análise" tone="warning" />;
     case 'APPROVED':
-      return <Badge label="pública" tone="success" />;
+      return <Badge label="publicada" tone="success" />;
     case 'REJECTED':
       return <Badge label="recusada" tone="danger" />;
     default:

@@ -3,8 +3,12 @@ export const colors = {
   primary: '#C8603A',
   primaryLight: '#F6E4D9',
   onPrimary: '#FFFFFF',
-  success: '#6F7048',
-  successLight: '#E8E6D3',
+  /** Verde da panela da logo: só detalhe decorativo (ex.: subreceitas). Não usar como "sucesso". */
+  olive: '#6F7048',
+  oliveLight: '#E8E6D3',
+  /** Sucesso / concluído (toast, check, itens comprados). */
+  success: '#16A34A',
+  successLight: '#DCFCE7',
   text: '#3D342E',
   muted: '#74685F',
   border: '#E5DCCB',

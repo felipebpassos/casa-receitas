@@ -199,7 +199,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
         )}
         {!isPublicView && recipe.status === 'REJECTED' && (
           <View style={[styles.card, { backgroundColor: colors.dangerLight, borderColor: colors.danger, gap: spacing.xs }]}>
-            <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovada para a biblioteca</Text>
+            <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovada para publicação</Text>
             <Text style={styles.body}>{recipe.rejectionReason || 'Sem motivo informado.'}</Text>
             <Text style={styles.muted}>Ela continua no seu caderno. Edite e envie de novo, se quiser.</Text>
           </View>

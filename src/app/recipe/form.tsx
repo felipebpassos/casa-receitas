@@ -125,7 +125,7 @@ function RecipeForm() {
     if (!ok) return;
     toast.success(
       recipe.status === 'PENDING' ? 'Enviada para aprovação' : isEdit ? 'Alterações salvas' : 'Receita cadastrada',
-      recipe.status === 'PENDING' ? 'Você já pode usá-la na sua semana. Ela aparece na biblioteca depois de aprovada.' : undefined,
+      recipe.status === 'PENDING' ? 'Você já pode usá-la na sua semana. Ela é publicada depois de aprovada.' : undefined,
     );
     if (isEdit) router.back();
     else router.replace({ pathname: '/recipe/[id]', params: { id: recipe.id } });
@@ -147,9 +147,9 @@ function RecipeForm() {
           {rows.map((row, index) => {
             const qtyError = errors[`items[${index}].quantity`];
             return row.subRecipeId ? (
-              <View key={row.key} style={[styles.card, { gap: spacing.sm, borderColor: colors.success }]}>
+              <View key={row.key} style={[styles.card, { gap: spacing.sm, borderColor: colors.olive }]}>
                 <View style={styles.row}>
-                  <Ionicons name="book-outline" size={18} color={colors.success} />
+                  <Ionicons name="book-outline" size={18} color={colors.olive} />
                   <Text style={[styles.subtitle, { flex: 1 }]}>{row.name}</Text>
                   <IconButton name="trash-outline" label={`Remover ${row.name}`} color={colors.danger} onPress={() => removeRow(row.key)} />
                 </View>
@@ -272,7 +272,7 @@ function SubmitSwitch({
     return (
       <Pressable onPress={() => router.push('/account')} style={[styles.card, styles.row]}>
         <Ionicons name="globe-outline" size={20} color={colors.muted} />
-        <Text style={[styles.muted, { flex: 1 }]}>Para publicar receitas na biblioteca, entre na sua conta.</Text>
+        <Text style={[styles.muted, { flex: 1 }]}>Para publicar receitas, entre na sua conta.</Text>
         <Ionicons name="chevron-forward" size={16} color={colors.muted} />
       </Pressable>
     );
@@ -280,23 +280,23 @@ function SubmitSwitch({
   const wasApproved = existing?.status === 'APPROVED';
   const hint = !value
     ? wasApproved
-      ? 'Ao salvar, ela sai da biblioteca e fica visível apenas para você.'
+      ? 'Ao salvar, ela deixa de ser publicada e fica visível apenas para você.'
       : 'Visível apenas para você.'
     : wasApproved
-      ? 'Já está na biblioteca. Ao salvar alterações, ela volta para análise.'
-      : 'Depois de aprovada pela moderação, aparece na biblioteca para outras pessoas (as receitas usadas nela também).';
+      ? 'Já está publicada. Ao salvar alterações, ela volta para análise.'
+      : 'Depois de aprovada pela moderação, fica visível para outras pessoas em Explorar (as receitas usadas nela também).';
   return (
     <View style={{ gap: spacing.sm }}>
       {existing?.status === 'REJECTED' && (
         <View style={[styles.card, { borderColor: colors.danger, backgroundColor: colors.dangerLight, gap: spacing.xs }]}>
-          <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovada para a biblioteca</Text>
+          <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovada para publicação</Text>
           <Text style={styles.body}>{existing.rejectionReason || 'Sem motivo informado.'}</Text>
           <Text style={styles.muted}>Ajuste a receita e envie de novo, se quiser.</Text>
         </View>
       )}
       <View style={[styles.card, styles.row]}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.subtitle}>Enviar para a biblioteca pública</Text>
+          <Text style={styles.subtitle}>Publicar receita</Text>
           <Text style={styles.muted}>{hint}</Text>
         </View>
         <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.primary }} />

@@ -1,11 +1,14 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Image, Platform, ScrollView, Text, View } from 'react-native';
-import { confirm } from '@/components/ConfirmDialog';
+import { ProfileView, userDisplayName } from '@/components/ProfileView';
 import { colors, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
-import { Button, Field, Input, Segmented, styles } from '@/components/ui';
+import { Button, Field, Input, PasswordInput, Segmented, styles } from '@/components/ui';
+import { WelcomeModal } from '@/components/WelcomeModal';
 import { useAuth } from '@/context/AuthProvider';
+import { useData } from '@/context/DataProvider';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { signInWithGoogle } from '@/lib/googleAuth';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
@@ -14,11 +17,45 @@ import { signInSchema, signUpSchema } from '@/lib/validation';
 type Mode = 'signin' | 'signup';
 
 /**
- * Conta: login/cadastro ou dados da conta.
- * `onDone` é chamado após entrar/sair (no modal, fecha; na aba Perfil, não precisa).
+ * Conta: login/cadastro ou perfil.
+ * Com `onDone` (modal aberto no meio de uma tarefa): entrar/sair volta para onde a pessoa estava.
+ * Sem `onDone` (aba Perfil): entrar leva para Receitas; criar conta mostra as boas-vindas.
  */
 export function AccountView({ onDone }: { onDone?: () => void }) {
-  const { userId, email, signOut } = useAuth();
+  const { userId } = useAuth();
+  const { recipes } = useData();
+  // Fica aqui (e não no formulário) porque, com a sessão criada, o formulário dá lugar ao perfil.
+  const [welcomeName, setWelcomeName] = useState<string | null>(null);
+
+  const goHome = () => router.navigate('/');
+
+  const afterSignIn = () => (onDone ? onDone() : goHome());
+
+  const welcome = welcomeName !== null && (
+    <WelcomeModal
+      name={welcomeName}
+      primary={
+        onDone
+          ? { title: 'Continuar', icon: 'arrow-forward', onPress: () => (setWelcomeName(null), onDone()) }
+          : { title: 'Ir para Receitas', icon: 'book-outline', onPress: () => (setWelcomeName(null), goHome()) }
+      }
+      secondary={
+        onDone
+          ? undefined
+          : recipes.length === 0
+            ? {
+                title: 'Criar minha primeira receita',
+                icon: 'add-circle-outline',
+                onPress: () => {
+                  setWelcomeName(null);
+                  goHome();
+                  router.push('/recipe/form');
+                },
+              }
+            : { title: 'Planejar a semana', icon: 'calendar-outline', onPress: () => (setWelcomeName(null), router.navigate('/semana')) }
+      }
+    />
+  );
 
   if (!isSupabaseConfigured) {
     return (
@@ -30,42 +67,15 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
     );
   }
 
-  if (userId) {
-    return (
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, gap: spacing.lg }}>
-        <View style={{ alignItems: 'center', gap: spacing.sm }}>
-          <Ionicons name="cloud-done-outline" size={56} color={colors.success} />
-          <Text style={styles.subtitle}>{email}</Text>
-          <Text style={[styles.muted, { textAlign: 'center' }]}>
-            Suas receitas, sua semana e sua lista de compras estão salvas na sua conta.
-          </Text>
-        </View>
-        <Button
-          title="Sair da conta"
-          icon="log-out-outline"
-          variant="danger"
-          onPress={() =>
-            confirm({
-              title: 'Sair',
-              message: 'Seus dados continuam salvos na conta. Neste celular, o app volta a funcionar sem conta.',
-              confirmText: 'Sair',
-              destructive: true,
-              onConfirm: async () => {
-                await signOut();
-                toast.info('Você saiu da conta', 'Neste celular, o app volta a funcionar sem conta.');
-                onDone?.();
-              },
-            })
-          }
-        />
-      </ScrollView>
-    );
-  }
-
-  return <SignInForm onDone={onDone} />;
+  return (
+    <>
+      {userId ? <ProfileView onSignedOut={onDone} /> : <SignInForm onSignedIn={afterSignIn} onSignedUp={setWelcomeName} />}
+      {welcome}
+    </>
+  );
 }
 
-function SignInForm({ onDone }: { onDone?: () => void }) {
+function SignInForm({ onSignedIn, onSignedUp }: { onSignedIn: () => void; onSignedUp: (name: string) => void }) {
   const [mode, setMode] = useState<Mode>('signin');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -86,8 +96,10 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
     try {
       if (await signInWithGoogle()) {
         // Na web a página sai para o Google; o aviso aparece só no app.
-        if (Platform.OS !== 'web') toast.success('Você entrou na sua conta');
-        onDone?.();
+        if (Platform.OS !== 'web') {
+          toast.success('Você entrou na sua conta');
+          onSignedIn();
+        }
       }
     } catch (e) {
       toast.error(e, { title: 'Não foi possível entrar com Google' });
@@ -106,7 +118,7 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
         const { error } = await supabase.auth.signInWithPassword({ email: v.email, password: v.password });
         if (error) throw error;
         toast.success('Você entrou na sua conta');
-        onDone?.();
+        onSignedIn();
       } else {
         const { data, error } = await supabase.auth.signUp({
           email: v.email,
@@ -115,8 +127,7 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
         });
         if (error) throw error;
         if (data.session) {
-          toast.success('Conta criada', 'Suas receitas agora ficam salvas na nuvem.');
-          onDone?.();
+          onSignedUp(userDisplayName(data.session.user.user_metadata, v.email));
         } else {
           toast.info('Confirme seu e-mail', 'Enviamos um link de confirmação. Depois de confirmar, entre com seu e-mail e senha.', {
             icon: 'mail-outline',
@@ -164,11 +175,10 @@ function SignInForm({ onDone }: { onDone?: () => void }) {
         />
       </Field>
       <Field label="Senha" error={errors.password}>
-        <Input
+        <PasswordInput
           value={password}
           onChangeText={setPassword}
           placeholder="Mínimo de 6 caracteres"
-          secureTextEntry
           autoCapitalize="none"
           autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
           invalid={!!errors.password}

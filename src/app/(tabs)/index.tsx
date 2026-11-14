@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
@@ -16,8 +16,20 @@ import type { PublicRecipeSummary, Recipe } from '@/lib/types';
 type Tab = 'collection' | 'explore';
 
 export default function RecipesScreen() {
-  const [tab, setTab] = useState<Tab>('collection');
+  // Atalhos de outras telas podem abrir uma aba específica (ex.: ?tab=explore).
+  const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
+  const requestedTab = tabParam === 'collection' || tabParam === 'explore' ? tabParam : null;
+  const [tab, setTab] = useState<Tab>(requestedTab ?? 'collection');
   const [query, setQuery] = useState('');
+  const [seenParam, setSeenParam] = useState(tabParam);
+  if (tabParam !== seenParam) {
+    setSeenParam(tabParam);
+    if (requestedTab) setTab(requestedTab);
+  }
+  // Limpa o parâmetro para que o mesmo atalho funcione de novo depois.
+  useEffect(() => {
+    if (tabParam) router.setParams({ tab: undefined });
+  }, [tabParam]);
 
   return (
     <View style={styles.screen}>
@@ -178,13 +190,13 @@ function ExploreList({ query }: { query: string }) {
   }, [query, userId, tick]);
 
   if (!isSupabaseConfigured) {
-    return <EmptyState icon="cloud-offline-outline" title="Biblioteca indisponível" subtitle="O app não está conectado ao servidor." />;
+    return <EmptyState icon="cloud-offline-outline" title="Receitas publicadas indisponíveis" subtitle="O app não está conectado ao servidor." />;
   }
   if (loading) return <Loading />;
 
   // Sem nada para mostrar: erro ocupa a área. Com resultados antigos: aviso no topo, lista continua.
   if (error && results.length === 0) {
-    return <ErrorView error={error} context={{ title: 'Não foi possível abrir a biblioteca' }} onRetry={retry} retrying={refreshing} />;
+    return <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />;
   }
 
   return (
@@ -231,8 +243,8 @@ function ExploreList({ query }: { query: string }) {
         error ? undefined : (
           <EmptyState
             icon="globe-outline"
-            title={query ? 'Nenhuma receita encontrada' : 'Nenhuma receita pública ainda'}
-            subtitle={query ? undefined : 'Publique as suas para começar a biblioteca!'}
+            title={query ? 'Nenhuma receita encontrada' : 'Nenhuma receita publicada ainda'}
+            subtitle={query ? undefined : 'Publique as suas e seja a primeira pessoa a compartilhar!'}
           />
         )
       }
