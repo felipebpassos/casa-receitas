@@ -54,7 +54,7 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       icon: 'log-out-outline',
       onConfirm: async () => {
         await signOut();
-        toast.info('Você saiu da conta', 'Neste celular, o app volta a funcionar sem conta.');
+        toast.success('Você saiu da conta', 'Neste celular, o app volta a funcionar sem conta.');
         onSignedOut?.();
       },
     });

@@ -129,7 +129,7 @@ function SignInForm({ onSignedIn, onSignedUp }: { onSignedIn: () => void; onSign
         if (data.session) {
           onSignedUp(userDisplayName(data.session.user.user_metadata, v.email));
         } else {
-          toast.info('Confirme seu e-mail', 'Enviamos um link de confirmação. Depois de confirmar, entre com seu e-mail e senha.', {
+          toast.success('Conta criada', 'Enviamos um link de confirmação para o seu e-mail. Depois de confirmar, entre com seu e-mail e senha.', {
             icon: 'mail-outline',
             duration: 8000,
           });
