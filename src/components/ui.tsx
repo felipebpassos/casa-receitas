@@ -126,8 +126,8 @@ export function PasswordInput(props: Omit<TextInputProps, 'secureTextEntry'> & {
   const [visible, setVisible] = useState(false);
   return (
     <View style={{ justifyContent: 'center' }}>
-      <Input {...props} secureTextEntry={!visible} style={[{ paddingRight: 44 }, props.style]} />
-      <View style={{ position: 'absolute', right: spacing.sm }}>
+      <Input {...props} secureTextEntry={!visible} style={[{ paddingRight: 52 }, props.style]} />
+      <View style={{ position: 'absolute', right: spacing.lg }}>
         <IconButton
           name={visible ? 'eye-off-outline' : 'eye-outline'}
           label={visible ? 'Ocultar senha' : 'Mostrar senha'}
