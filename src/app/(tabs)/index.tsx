@@ -1,11 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { StatusBadge } from '@/components/StatusBadge';
 import { colors, radius, spacing } from '@/components/theme';
-import { Badge, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
+import { EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 import { searchPublicRecipes } from '@/lib/publicLibrary';
@@ -118,31 +118,86 @@ function CollectionList({ query }: { query: string }) {
 
 function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }) {
   return (
+    <RecipeListItem
+      id={recipe.id}
+      name={recipe.name}
+      description={recipe.description}
+      itemCount={itemCount}
+      author={recipe.originRecipeId ? (recipe.originAuthorName ?? 'usuário') : null}
+      badge={recipe.originRecipeId ? null : <StatusBadge status={recipe.status} />}
+    />
+  );
+}
+
+/** Card de receita das listas. `author` nulo = receita sua ("Minha"). */
+function RecipeListItem({
+  id,
+  name,
+  description,
+  itemCount,
+  author,
+  badge,
+}: {
+  id: string;
+  name: string;
+  description: string | null;
+  itemCount: number;
+  author: string | null;
+  badge?: ReactNode;
+}) {
+  return (
     <Pressable
-      onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: recipe.id } })}
-      style={({ pressed }) => [styles.card, { gap: 4 }, pressed && { backgroundColor: colors.primaryLight }]}
+      onPress={() => router.push({ pathname: '/recipe/[id]', params: { id } })}
+      accessibilityRole="link"
+      accessibilityLabel={`${name}${author ? `, por ${author}` : ''}`}
+      style={({ pressed }) => [styles.card, styles.row, { gap: spacing.md }, pressed && { backgroundColor: colors.primaryLight }]}
     >
-      <View style={styles.row}>
-        <Text style={[styles.subtitle, { flex: 1 }]} numberOfLines={1}>
-          {recipe.name}
-        </Text>
-        {recipe.originRecipeId ? <Badge label="salva" /> : <StatusBadge status={recipe.status} />}
+      <View style={local.icon}>
+        <Ionicons name="restaurant-outline" size={20} color={colors.primary} />
       </View>
-      {recipe.description ? (
-        <Text style={styles.muted} numberOfLines={2}>
-          {recipe.description}
-        </Text>
-      ) : null}
-      <View style={styles.row}>
-        <Ionicons name="cart-outline" size={14} color={colors.accent} />
-        <Text style={[styles.muted, { flex: 1 }]}>
-          {`${itemCount} ingrediente${itemCount === 1 ? '' : 's'}`}
-          {recipe.originAuthorName ? ` · de ${recipe.originAuthorName}` : ''}
-        </Text>
+      <View style={{ flex: 1, gap: 2 }}>
+        <View style={styles.row}>
+          <Text style={[styles.subtitle, { flexShrink: 1 }]} numberOfLines={1}>
+            {name}
+          </Text>
+          {badge}
+        </View>
+        {description ? (
+          <Text style={styles.muted} numberOfLines={2}>
+            {description}
+          </Text>
+        ) : null}
+        <View style={[styles.row, { gap: spacing.md, marginTop: 2 }]}>
+          <Meta icon="cart-outline" text={`${itemCount} ingrediente${itemCount === 1 ? '' : 's'}`} />
+          <Meta icon="person-outline" text={author ? `por ${author}` : 'Minha'} shrink />
+        </View>
       </View>
+      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
     </Pressable>
   );
 }
+
+function Meta({ icon, text, shrink }: { icon: ComponentProps<typeof Ionicons>['name']; text: string; shrink?: boolean }) {
+  return (
+    <View style={[styles.row, { gap: 4 }, shrink && { flexShrink: 1 }]}>
+      <Ionicons name={icon} size={14} color={colors.muted} />
+      <Text style={[styles.muted, shrink && { flexShrink: 1 }]} numberOfLines={1}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const local = StyleSheet.create({
+  icon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
 
 /** Biblioteca pública (receitas de outras pessoas). */
 function ExploreList({ query }: { query: string }) {
@@ -199,9 +254,13 @@ function ExploreList({ query }: { query: string }) {
     return <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />;
   }
 
+  // As que já estão no caderno não aparecem aqui.
+  const visible = results.filter((r) => !findCopyOf(r.id));
+  const allSaved = results.length > 0 && visible.length === 0;
+
   return (
     <FlatList
-      data={results}
+      data={visible}
       keyExtractor={(r) => r.id}
       contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
       keyboardShouldPersistTaps="handled"
@@ -219,28 +278,12 @@ function ExploreList({ query }: { query: string }) {
         ) : undefined
       }
       renderItem={({ item }) => (
-        <Pressable
-          onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: item.id } })}
-          style={({ pressed }) => [styles.card, { gap: 4 }, pressed && { backgroundColor: colors.primaryLight }]}
-        >
-          <View style={styles.row}>
-            <Text style={[styles.subtitle, { flex: 1 }]} numberOfLines={1}>
-              {item.name}
-            </Text>
-            {findCopyOf(item.id) && <Badge label="salva" tone="success" />}
-          </View>
-          {item.description ? (
-            <Text style={styles.muted} numberOfLines={2}>
-              {item.description}
-            </Text>
-          ) : null}
-          <Text style={styles.muted}>
-            {item.itemCount} ingrediente(s){item.authorName ? ` · por ${item.authorName}` : ''}
-          </Text>
-        </Pressable>
+        <RecipeListItem id={item.id} name={item.name} description={item.description} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
       )}
       ListEmptyComponent={
-        error ? undefined : (
+        error ? undefined : allSaved ? (
+          <EmptyState icon="bookmark-outline" title="Você já salvou todas" subtitle="As receitas que você salvou estão no seu caderno." />
+        ) : (
           <EmptyState
             icon="globe-outline"
             title={query ? 'Nenhuma receita encontrada' : 'Nenhuma receita publicada ainda'}
