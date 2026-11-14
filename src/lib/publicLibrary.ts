@@ -7,11 +7,14 @@ import type { PublicRecipeSummary, PublicRecipeTree, Recipe } from './types';
 export async function searchPublicRecipes(q: string, excludeUserId: string | null): Promise<PublicRecipeSummary[]> {
   const { data, error, status } = await supabase.rpc('search_public_recipes', { q });
   if (error) throw serviceError({ ...error, status });
-  return (data as { id: string; user_id: string; name: string; description: string | null; author_name: string | null; item_count: number }[])
+  return (
+    data as { id: string; user_id: string; kind: string | null; name: string; description: string | null; author_name: string | null; item_count: number }[]
+  )
     .filter((r) => r.user_id !== excludeUserId)
     .map((r) => ({
       id: r.id,
       userId: r.user_id,
+      kind: r.kind === 'PREP' ? ('PREP' as const) : ('RECIPE' as const),
       name: r.name,
       description: r.description,
       authorName: r.author_name,

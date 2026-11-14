@@ -22,8 +22,16 @@ export type RecipeItem = {
  */
 export type RecipeStatus = 'PRIVATE' | 'PENDING' | 'APPROVED' | 'REJECTED';
 
+/**
+ * RECIPE: prato completo (lasanha, pizza); pode usar preparos como ingrediente.
+ * PREP: preparo, base usada dentro de receitas (arroz, molho de tomate); só ingredientes do catálogo.
+ * Escolhido ao criar; não muda depois.
+ */
+export type RecipeKind = 'RECIPE' | 'PREP';
+
 export type Recipe = {
   id: string;
+  kind: RecipeKind;
   name: string;
   description: string | null;
   preparation: string | null;
@@ -95,6 +103,7 @@ export type PublicRecipeTree = {
 export type PublicRecipeSummary = {
   id: string;
   userId: string;
+  kind: RecipeKind;
   name: string;
   description: string | null;
   authorName: string | null;

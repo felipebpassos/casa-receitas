@@ -4,6 +4,7 @@ import { useData } from '@/context/DataProvider';
 import { normalizeName } from '@/lib/shopping';
 import type { Recipe } from '@/lib/types';
 import { ModalScreen } from './ModalScreen';
+import { KindIcon } from './RecipeKind';
 import { colors, spacing } from './theme';
 import { SearchBar, styles } from './ui';
 
@@ -53,10 +54,18 @@ export function RecipePicker({
               setQuery('');
               onSelect(item);
             }}
-            style={({ pressed }) => ({ paddingHorizontal: spacing.lg, paddingVertical: 14, backgroundColor: pressed ? colors.primaryLight : colors.card })}
+            style={({ pressed }) => [
+              styles.row,
+              { gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: 14, backgroundColor: pressed ? colors.primaryLight : colors.card },
+            ]}
           >
-            <Text style={styles.subtitle}>{item.name}</Text>
-            {item.originAuthorName ? <Text style={styles.muted}>de {item.originAuthorName}</Text> : null}
+            <KindIcon kind={item.kind} size={36} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {item.name}
+              </Text>
+              {item.originAuthorName ? <Text style={styles.muted}>por {item.originAuthorName}</Text> : null}
+            </View>
           </Pressable>
         )}
         ListEmptyComponent={

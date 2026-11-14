@@ -76,12 +76,25 @@ const sugApproved = await A.c.from('ingredient_suggestions').insert({ name: 'Zaa
 ok(!!sugApproved.error, 'usuário não cria sugestão já aprovada', sugApproved.error?.code);
 
 // ------------------------------------------------------------ receitas e moderação
-const molho = recipe({ name: 'Molho bolonhesa' }, [
+const molho = recipe({ name: 'Molho bolonhesa', kind: 'PREP' }, [
   { ingredient_id: gid('Carne moída'), quantity: 500, unit: 'g' },
   { ingredient_id: gid('Tomate'), quantity: 4, unit: 'unidade' },
 ]);
-ok(!(await A.c.rpc('save_recipe', { p: molho })).error, 'Ana salva o molho (privado)');
+ok(!(await A.c.rpc('save_recipe', { p: molho })).error, 'Ana salva o molho (preparo, privado)');
 ok((await statusOf(A.c, molho.id)) === 'PRIVATE', 'receita nova é PRIVATE');
+
+// Receita x Preparo
+const kindOf = async (id) => (await A.c.from('recipes').select('kind').eq('id', id).single()).data?.kind;
+ok((await kindOf(molho.id)) === 'PREP', 'molho é gravado como preparo');
+const flip = await A.c.rpc('save_recipe', { p: { ...molho, kind: 'RECIPE' } });
+ok(!flip.error && (await kindOf(molho.id)) === 'PREP', 'o tipo não muda ao editar', flip.error);
+const prato = recipe({ name: 'Prato qualquer' }, [{ ingredient_id: gid('Sal'), quantity: 1, unit: 'g' }]);
+await A.c.rpc('save_recipe', { p: prato });
+ok((await kindOf(prato.id)) === 'RECIPE', 'sem tipo, vira receita');
+const usesRecipe = await A.c.rpc('save_recipe', { p: recipe({ name: 'Usa receita' }, [{ sub_recipe_id: prato.id }]) });
+ok(!!usesRecipe.error, 'receita não pode ser ingrediente (só preparo)', usesRecipe.error?.message);
+const prepInPrep = await A.c.rpc('save_recipe', { p: recipe({ name: 'Preparo com preparo', kind: 'PREP' }, [{ sub_recipe_id: molho.id }]) });
+ok(!!prepInPrep.error, 'preparo não usa outro preparo', prepInPrep.error?.message);
 
 const lasanha = recipe({ name: 'Lasanha', submit: true, source_url: 'https://youtu.be/x', source_platform: 'youtube' }, [
   { ingredient_id: gid('Massa de lasanha'), quantity: 1, unit: 'pacote' },
@@ -121,6 +134,7 @@ const s2 = await anon.rpc('search_public_recipes', { q: 'MOLHO' });
 ok(s2.data?.some((r) => r.name === 'Lasanha'), 'busca pelo nome da subreceita acha a lasanha', s2.data?.map((r) => r.name));
 const s3 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
 ok(s3.data?.[0]?.author_name === 'Ana' && Number(s3.data?.[0]?.item_count) === 3, 'resultado traz autor e nº de itens', s3.data);
+ok(s3.data?.[0]?.kind === 'RECIPE' && s1.data?.find((r) => r.name === 'Molho bolonhesa')?.kind === 'PREP', 'resultado traz o tipo', s3.data);
 const items = await anon.from('recipe_items').select('ingredient_id').eq('recipe_id', molho.id);
 ok(items.data?.length === 2, 'visitante lê os itens da subreceita aprovada', items);
 
@@ -159,7 +173,7 @@ const hijack = await B.c.rpc('save_recipe', { p: { ...lasanha, name: 'Hackeada' 
 ok(!!hijack.error, 'Beto não altera a receita da Ana', hijack.error?.message);
 
 // Cópias do Beto
-const molhoCopy = recipe({ name: 'Molho bolonhesa', origin_recipe_id: molho.id, origin_author_name: 'Ana' }, [
+const molhoCopy = recipe({ name: 'Molho bolonhesa', kind: 'PREP', origin_recipe_id: molho.id, origin_author_name: 'Ana' }, [
   { ingredient_id: gid('Carne moída'), quantity: 500, unit: 'g' },
 ]);
 const lasCopy = recipe({ name: 'Lasanha', origin_recipe_id: lasanha.id, origin_author_name: 'Ana' }, [

@@ -6,6 +6,7 @@ import {
   computeGroups,
   countItems,
   formatQuantity,
+  inferKind,
   type NeedGroup,
   type NeedsContext,
   type RecipeLike,
@@ -112,8 +113,18 @@ test('ciclo entre receitas não trava o cálculo', () => {
   assert.equal(countItems(groups), 2);
 });
 
-test('não oferece como subreceita a própria receita nem quem depende dela', () => {
-  const allowed = allowedSubRecipes(all, 'molho').map((r) => r.id);
-  assert.deepEqual(allowed, []); // lasanha e macarrão usam o molho
-  assert.deepEqual(allowedSubRecipes(all, 'lasanha').map((r) => r.id).sort(), ['macarrao', 'molho']);
+test('só preparos (sem outros preparos dentro) podem virar ingrediente, e nunca de si mesmos', () => {
+  const kinds = { molho: 'PREP', lasanha: 'RECIPE', macarrao: 'RECIPE' } as const;
+  const typed = all.map((r) => ({ ...r, kind: kinds[r.id as keyof typeof kinds] }));
+  assert.deepEqual(allowedSubRecipes(typed, 'lasanha').map((r) => r.id), ['molho']);
+  assert.deepEqual(allowedSubRecipes(typed, 'molho').map((r) => r.id), []);
+  // preparo antigo que usa outro preparo não é oferecido
+  const legacy = { id: 'x', name: 'X', kind: 'PREP' as const, items: [sub('molho')] };
+  assert.deepEqual(allowedSubRecipes([...typed, legacy], 'nova').map((r) => r.id), ['molho']);
+});
+
+test('dados antigos: quem é usado como ingrediente (e não usa nenhum) vira preparo', () => {
+  assert.equal(inferKind(molho, all), 'PREP');
+  assert.equal(inferKind(lasanha, all), 'RECIPE');
+  assert.equal(inferKind(macarrao, all), 'RECIPE');
 });

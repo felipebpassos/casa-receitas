@@ -1,15 +1,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GLOBAL_CATALOG } from '../catalog';
-import { normalizeName } from '../shopping';
+import { inferKind, normalizeName } from '../shopping';
 import { emptySnapshot, checkKey, type Recipe, type Snapshot } from '../types';
 import type { Repo } from './types';
 
 const KEY = 'receitas-de-casa:data:v1';
 
-/** Formato antigo (com Despensa, ingredientes personalizados e isPublic). */
+/** Formato antigo (com Despensa, ingredientes personalizados, isPublic e sem tipo Receita/Preparo). */
 type LegacyData = Omit<Partial<Snapshot>, 'recipes'> & {
   customIngredients?: { id: string; name: string }[];
-  recipes?: (Omit<Recipe, 'status' | 'rejectionReason'> & Partial<Pick<Recipe, 'status' | 'rejectionReason'>> & { isPublic?: boolean })[];
+  recipes?: (Omit<Recipe, 'status' | 'rejectionReason' | 'kind'> &
+    Partial<Pick<Recipe, 'status' | 'rejectionReason' | 'kind'>> & { isPublic?: boolean })[];
 };
 
 /**
@@ -20,8 +21,10 @@ function normalize(raw: LegacyData): Snapshot {
   const catalogByName = new Map(GLOBAL_CATALOG.map((i) => [normalizeName(i.name), i.id]));
   const customMap = new Map((raw.customIngredients ?? []).map((i) => [i.id, catalogByName.get(normalizeName(i.name)) ?? null]));
 
-  const recipes: Recipe[] = (raw.recipes ?? []).map(({ isPublic: _legacy, ...r }) => ({
+  const rawRecipes = raw.recipes ?? [];
+  const recipes: Recipe[] = rawRecipes.map(({ isPublic: _legacy, ...r }) => ({
     ...r,
+    kind: r.kind ?? inferKind(r, rawRecipes),
     // Sem login nada vai para a biblioteca.
     status: 'PRIVATE',
     rejectionReason: null,

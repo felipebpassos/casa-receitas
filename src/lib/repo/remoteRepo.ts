@@ -43,7 +43,7 @@ export class RemoteRepo implements Repo {
 
   async deleteRecipe(id: string) {
     const res = await supabase.from('recipes').delete().eq('id', id);
-    if (res.error?.code === '23503') throw new UserFacingError('Esta receita é usada como subreceita em outra receita.', 'Não é possível excluir', 'conflict');
+    if (res.error?.code === '23503') throw new UserFacingError('Este preparo é usado em outra receita. Remova-o de lá primeiro.', 'Não é possível excluir', 'conflict');
     check(res);
   }
 

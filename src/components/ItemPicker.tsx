@@ -1,4 +1,3 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
@@ -8,38 +7,43 @@ import { normalizeName, UNITS } from '@/lib/shopping';
 import type { Ingredient, Recipe } from '@/lib/types';
 import { suggestionSchema } from '@/lib/validation';
 import { ModalScreen } from './ModalScreen';
+import { KIND, KindIcon } from './RecipeKind';
 import { colors, spacing } from './theme';
 import { toast } from './Toast';
 import { Button, ChipSelect, Field, Input, Segmented, SearchBar, styles } from './ui';
 
-type Tab = 'ingredients' | 'recipes';
+type Tab = 'ingredients' | 'preps';
 
 /**
- * Escolhe um item para a receita: um ingrediente do catálogo ou uma das suas
- * receitas, que vira subreceita. Ingrediente que falta pode ser sugerido.
+ * Escolhe um item: um ingrediente do catálogo ou (só em receitas) um dos seus preparos.
+ * Ingrediente que falta pode ser sugerido.
  */
 export function ItemPicker({
   visible,
   onClose,
   onPickIngredient,
   onPickRecipe,
-  allowedRecipes,
+  allowPreps,
+  allowedPreps,
 }: {
   visible: boolean;
   onClose: () => void;
   onPickIngredient: (ingredient: Ingredient) => void;
   onPickRecipe: (recipe: Recipe) => void;
-  /** Receitas que podem virar subreceita (sem a própria e sem criar ciclo). */
-  allowedRecipes: Recipe[];
+  /** Receitas podem usar preparos; preparos levam só ingredientes (sem a aba de preparos). */
+  allowPreps: boolean;
+  /** Preparos disponíveis (sem os já adicionados). */
+  allowedPreps: Recipe[];
 }) {
   const { catalog } = useData();
-  const [tab, setTab] = useState<Tab>('ingredients');
+  const [selectedTab, setTab] = useState<Tab>('ingredients');
+  const tab: Tab = allowPreps ? selectedTab : 'ingredients';
   const [query, setQuery] = useState('');
   const [suggesting, setSuggesting] = useState(false);
 
   const q = normalizeName(query);
   const ingredients = useMemo(() => catalog.filter((i) => !q || normalizeName(i.name).includes(q)), [catalog, q]);
-  const recipes = useMemo(() => allowedRecipes.filter((r) => !q || normalizeName(r.name).includes(q)), [allowedRecipes, q]);
+  const preps = useMemo(() => allowedPreps.filter((r) => !q || normalizeName(r.name).includes(q)), [allowedPreps, q]);
   const exactMatch = ingredients.some((i) => normalizeName(i.name) === q);
 
   const close = () => {
@@ -49,23 +53,25 @@ export function ItemPicker({
   };
 
   return (
-    <ModalScreen visible={visible} title="Adicionar à receita" onClose={close}>
+    <ModalScreen visible={visible} title={allowPreps ? 'Adicionar à receita' : 'Adicionar ingrediente'} onClose={close}>
       <View style={{ padding: spacing.lg, gap: spacing.md }}>
-        <Segmented<Tab>
-          value={tab}
-          onChange={(t) => {
-            setTab(t);
-            setSuggesting(false);
-          }}
-          options={[
-            { value: 'ingredients', label: 'Ingredientes' },
-            { value: 'recipes', label: 'Minhas receitas' },
-          ]}
-        />
-        <SearchBar value={query} onChangeText={setQuery} placeholder={tab === 'ingredients' ? 'Buscar ingrediente...' : 'Buscar receita...'} />
-        {tab === 'recipes' && (
+        {allowPreps && (
+          <Segmented<Tab>
+            value={tab}
+            onChange={(t) => {
+              setTab(t);
+              setSuggesting(false);
+            }}
+            options={[
+              { value: 'ingredients', label: 'Ingredientes' },
+              { value: 'preps', label: KIND.PREP.plural, icon: KIND.PREP.icon },
+            ]}
+          />
+        )}
+        <SearchBar value={query} onChangeText={setQuery} placeholder={tab === 'ingredients' ? 'Buscar ingrediente...' : 'Buscar preparo...'} />
+        {tab === 'preps' && (
           <Text style={styles.muted}>
-            Use uma receita sua como parte desta (ex.: molho bolonhesa na lasanha). Na lista de compras, ela aparece como um grupo separado.
+            Use um preparo seu como parte desta receita (ex.: molho de tomate na lasanha). Na lista de compras, ele aparece como um grupo separado.
           </Text>
         )}
         {tab === 'ingredients' && suggesting && (
@@ -104,7 +110,7 @@ export function ItemPicker({
         />
       ) : (
         <FlatList
-          data={recipes}
+          data={preps}
           keyExtractor={(r) => r.id}
           keyboardShouldPersistTaps="handled"
           ItemSeparatorComponent={Separator}
@@ -115,11 +121,19 @@ export function ItemPicker({
                 onPickRecipe(item);
               }}
             >
-              <Ionicons name="book-outline" size={18} color={colors.olive} />
+              <KindIcon kind="PREP" size={28} />
               <Text style={[styles.body, { flex: 1 }]}>{item.name}</Text>
             </Row>
           )}
-          ListEmptyComponent={<Empty text="Nenhuma receita disponível. Cadastre a receita do preparo (ex.: molho) primeiro." />}
+          ListEmptyComponent={
+            <Empty
+              text={
+                q
+                  ? 'Nenhum preparo com esse nome.'
+                  : 'Nenhum preparo disponível. Cadastre um preparo primeiro (no + do caderno, escolha Preparo). Ex.: arroz, molho de tomate.'
+              }
+            />
+          }
         />
       )}
     </ModalScreen>

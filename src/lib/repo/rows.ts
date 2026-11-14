@@ -1,13 +1,14 @@
 // Conversão entre as linhas do banco (snake_case) e os tipos do app.
-import type { Recipe, RecipeItem, RecipeStatus } from '../types';
+import type { Recipe, RecipeItem, RecipeKind, RecipeStatus } from '../types';
 
 // recipe_items tem duas FKs para recipes (dona e subreceita): o embed precisa nomear a FK da dona.
 export const RECIPE_SELECT =
-  'id, user_id, name, description, preparation, source_url, source_platform, status, rejection_reason, origin_recipe_id, origin_author_name, created_at, updated_at, recipe_items:recipe_items!recipe_items_recipe_id_fkey(id, position, ingredient_id, sub_recipe_id, quantity, unit)';
+  'id, user_id, kind, name, description, preparation, source_url, source_platform, status, rejection_reason, origin_recipe_id, origin_author_name, created_at, updated_at, recipe_items:recipe_items!recipe_items_recipe_id_fkey(id, position, ingredient_id, sub_recipe_id, quantity, unit)';
 
 export type RecipeRow = {
   id: string;
   user_id: string;
+  kind: RecipeKind;
   name: string;
   description: string | null;
   preparation: string | null;
@@ -32,6 +33,7 @@ export type RecipeRow = {
 export function recipeFromRow(row: RecipeRow): Recipe {
   return {
     id: row.id,
+    kind: row.kind === 'PREP' ? 'PREP' : 'RECIPE',
     name: row.name,
     description: row.description,
     preparation: row.preparation,
@@ -61,6 +63,8 @@ export function recipeFromRow(row: RecipeRow): Recipe {
 export function recipeToPayload(r: Recipe) {
   return {
     id: r.id,
+    // Só vale ao criar: o servidor mantém o tipo de quem já existe.
+    kind: r.kind,
     name: r.name,
     description: r.description,
     preparation: r.preparation,

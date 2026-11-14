@@ -203,7 +203,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const parents = parentsOf(snap.recipes, id);
       if (parents.length) {
         toast.error(
-          new UserFacingError(`Esta receita é usada em: ${parents.map((p) => p.name).join(', ')}. Remova-a dessas receitas primeiro.`, 'Não é possível excluir', 'conflict'),
+          new UserFacingError(`Este preparo é usado em: ${parents.map((p) => p.name).join(', ')}. Remova-o dessas receitas primeiro.`, 'Não é possível excluir', 'conflict'),
         );
         return false;
       }
@@ -239,6 +239,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             (r): Recipe => ({
               ...r,
               id: recipeMap.get(r.id)!,
+              // O que é usado dentro da receita entra no caderno como preparo.
+              kind: r.id === tree.root.id ? r.kind : 'PREP',
               status: 'PRIVATE',
               rejectionReason: null,
               originRecipeId: r.id,

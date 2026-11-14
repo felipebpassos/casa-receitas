@@ -1,4 +1,5 @@
 // Regras de "o que comprar" — funções puras, sem dependências (testadas com node --test).
+import type { RecipeKind } from './types';
 
 export const UNITS = [
   'g',
@@ -157,27 +158,24 @@ export function computeGroups(recipeIds: string[], ctx: NeedsContext): NeedGroup
 /** Quantos itens há na lista agrupada. */
 export const countItems = (groups: NeedGroup[]) => groups.reduce((n, g) => n + g.items.length, 0);
 
-/** `recipeId` usa `targetId` como subreceita (direta ou indiretamente)? */
-export function dependsOn(recipeId: string, targetId: string, getRecipe: (id: string) => RecipeLike | undefined): boolean {
-  const seen = new Set<string>();
-  const stack = [recipeId];
-  while (stack.length) {
-    const r = getRecipe(stack.pop()!);
-    if (!r || seen.has(r.id)) continue;
-    seen.add(r.id);
-    for (const item of r.items) {
-      if (!item.subRecipeId) continue;
-      if (item.subRecipeId === targetId) return true;
-      stack.push(item.subRecipeId);
-    }
-  }
-  return false;
+/** A receita usa algum preparo como ingrediente? */
+export const hasSubRecipes = (recipe: RecipeLike) => recipe.items.some((i) => i.subRecipeId);
+
+/**
+ * Preparos que podem ser usados como ingrediente de `currentId`.
+ * Só preparos viram ingrediente, e preparos não usam outros preparos (um nível, sem ciclos).
+ */
+export function allowedSubRecipes<R extends RecipeLike & { kind: RecipeKind }>(recipes: R[], currentId: string): R[] {
+  return recipes.filter((r) => r.kind === 'PREP' && r.id !== currentId && !hasSubRecipes(r));
 }
 
-/** Receitas que podem ser usadas como subreceita de `currentId` sem criar ciclo. */
-export function allowedSubRecipes<R extends RecipeLike>(recipes: R[], currentId: string): R[] {
-  const get = (id: string) => recipes.find((r) => r.id === id);
-  return recipes.filter((r) => r.id !== currentId && !dependsOn(r.id, currentId, get));
+/**
+ * Tipo de receitas salvas antes de existir Receita/Preparo:
+ * quem já é usado como ingrediente por outra (e não usa nenhuma) vira preparo.
+ */
+export function inferKind(recipe: RecipeLike, all: RecipeLike[]): RecipeKind {
+  const usedByOthers = all.some((r) => r.id !== recipe.id && r.items.some((i) => i.subRecipeId === recipe.id));
+  return usedByOthers && !hasSubRecipes(recipe) ? 'PREP' : 'RECIPE';
 }
 
 /** IDs das receitas usadas como subreceita por alguma outra receita. */

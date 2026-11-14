@@ -1,17 +1,19 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
+import { NewRecipeDialog } from '@/components/NewRecipeDialog';
+import { KIND, KindIcon } from '@/components/RecipeKind';
 import { StatusBadge } from '@/components/StatusBadge';
 import { colors, radius, spacing } from '@/components/theme';
-import { EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
+import { Chip, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 import { searchPublicRecipes } from '@/lib/publicLibrary';
 import { computeGroups, countItems, normalizeName } from '@/lib/shopping';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import type { PublicRecipeSummary, Recipe } from '@/lib/types';
+import type { PublicRecipeSummary, Recipe, RecipeKind } from '@/lib/types';
 
 type Tab = 'collection' | 'explore';
 
@@ -21,6 +23,7 @@ export default function RecipesScreen() {
   const requestedTab = tabParam === 'collection' || tabParam === 'explore' ? tabParam : null;
   const [tab, setTab] = useState<Tab>(requestedTab ?? 'collection');
   const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
   const [seenParam, setSeenParam] = useState(tabParam);
   if (tabParam !== seenParam) {
     setSeenParam(tabParam);
@@ -54,8 +57,8 @@ export default function RecipesScreen() {
 
       {tab === 'collection' && (
         <Pressable
-          onPress={() => router.push('/recipe/form')}
-          accessibilityLabel="Nova receita"
+          onPress={() => setCreating(true)}
+          accessibilityLabel="Cadastrar receita ou preparo"
           style={({ pressed }) => ({
             position: 'absolute',
             right: spacing.lg,
@@ -73,46 +76,77 @@ export default function RecipesScreen() {
           <Ionicons name="add" size={30} color={colors.onPrimary} />
         </Pressable>
       )}
+
+      <NewRecipeDialog
+        visible={creating}
+        onClose={() => setCreating(false)}
+        onSelect={(kind) => {
+          setCreating(false);
+          router.push({ pathname: '/recipe/form', params: { kind } });
+        }}
+      />
     </View>
   );
 }
 
+type KindFilter = 'ALL' | RecipeKind;
+
+const FILTERS: { value: KindFilter; label: string }[] = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'RECIPE', label: KIND.RECIPE.plural },
+  { value: 'PREP', label: KIND.PREP.plural },
+];
+
 /** Meu caderno: receitas criadas por você + salvas de outras pessoas (estas somente leitura). */
 function CollectionList({ query }: { query: string }) {
   const { recipes, ingredientName, getRecipe, needsContext } = useData();
+  const [filter, setFilter] = useState<KindFilter>('ALL');
 
   const list = useMemo(() => {
     const q = normalizeName(query);
     return recipes.filter(
-        (r) =>
-          !q ||
+      (r) =>
+        (filter === 'ALL' || r.kind === filter) &&
+        (!q ||
           normalizeName(r.name).includes(q) ||
           r.items.some((i) => {
             const name = i.ingredientId ? ingredientName(i.ingredientId) : i.subRecipeId ? getRecipe(i.subRecipeId)?.name ?? '' : '';
             return normalizeName(name).includes(q);
-          }),
-      );
-  }, [recipes, query, ingredientName, getRecipe]);
+          })),
+    );
+  }, [recipes, query, filter, ingredientName, getRecipe]);
+
+  const empty = (() => {
+    if (query) return <EmptyState icon="search" title="Nada encontrado" subtitle={`Nada com "${query}" no nome ou nos ingredientes.`} />;
+    if (filter === 'RECIPE') return <EmptyState icon={KIND.RECIPE.icon} title="Nenhuma receita ainda" subtitle={`Toque em + e escolha Receita. Ex.: ${KIND.RECIPE.examples}`} />;
+    if (filter === 'PREP') return <EmptyState icon={KIND.PREP.icon} title="Nenhum preparo ainda" subtitle={`Toque em + e escolha Preparo. Ex.: ${KIND.PREP.examples}`} />;
+    return (
+      <EmptyState
+        icon="book-outline"
+        title="Seu caderno de receitas está vazio"
+        subtitle="Toque em + para cadastrar uma receita ou um preparo, ou salve receitas de outras pessoas em Explorar."
+      />
+    );
+  })();
 
   return (
-    <FlatList
-      data={list}
-      keyExtractor={(r) => r.id}
-      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96, gap: spacing.sm }}
-      keyboardShouldPersistTaps="handled"
-      renderItem={({ item }) => <RecipeCard recipe={item} itemCount={countItems(computeGroups([item.id], needsContext))} />}
-      ListEmptyComponent={
-        query ? (
-          <EmptyState icon="search" title="Nenhuma receita encontrada" subtitle={`Nada com "${query}" no nome ou nos ingredientes.`} />
-        ) : (
-          <EmptyState
-            icon="book-outline"
-            title="Seu caderno de receitas está vazio"
-            subtitle="Toque em + para cadastrar uma receita, ou salve receitas de outras pessoas em Explorar."
-          />
-        )
-      }
-    />
+    <View style={{ flex: 1 }}>
+      {recipes.length > 0 && (
+        <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }]} accessibilityRole="tablist">
+          {FILTERS.map((f) => (
+            <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
+          ))}
+        </View>
+      )}
+      <FlatList
+        data={list}
+        keyExtractor={(r) => r.id}
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: 96, gap: spacing.sm }}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => <RecipeCard recipe={item} itemCount={countItems(computeGroups([item.id], needsContext))} />}
+        ListEmptyComponent={empty}
+      />
+    </View>
   );
 }
 
@@ -120,6 +154,7 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
   return (
     <RecipeListItem
       id={recipe.id}
+      kind={recipe.kind}
       name={recipe.name}
       description={recipe.description}
       itemCount={itemCount}
@@ -129,9 +164,10 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
   );
 }
 
-/** Card de receita das listas. `author` nulo = receita sua ("Minha"). */
+/** Card de receita/preparo das listas. `author` nulo = sua ("Minha"/"Meu"). */
 function RecipeListItem({
   id,
+  kind,
   name,
   description,
   itemCount,
@@ -139,6 +175,7 @@ function RecipeListItem({
   badge,
 }: {
   id: string;
+  kind: RecipeKind;
   name: string;
   description: string | null;
   itemCount: number;
@@ -149,12 +186,10 @@ function RecipeListItem({
     <Pressable
       onPress={() => router.push({ pathname: '/recipe/[id]', params: { id } })}
       accessibilityRole="link"
-      accessibilityLabel={`${name}${author ? `, por ${author}` : ''}`}
+      accessibilityLabel={`${KIND[kind].label}: ${name}${author ? `, por ${author}` : ''}`}
       style={({ pressed }) => [styles.card, styles.row, { gap: spacing.md }, pressed && { backgroundColor: colors.primaryLight }]}
     >
-      <View style={local.icon}>
-        <Ionicons name="restaurant-outline" size={20} color={colors.primary} />
-      </View>
+      <KindIcon kind={kind} />
       <View style={{ flex: 1, gap: 2 }}>
         <View style={styles.row}>
           <Text style={[styles.subtitle, { flexShrink: 1 }]} numberOfLines={1}>
@@ -169,7 +204,7 @@ function RecipeListItem({
         ) : null}
         <View style={[styles.row, { gap: spacing.md, marginTop: 2 }]}>
           <Meta icon="cart-outline" text={`${itemCount} ingrediente${itemCount === 1 ? '' : 's'}`} />
-          <Meta icon="person-outline" text={author ? `por ${author}` : 'Minha'} shrink />
+          <Meta icon="person-outline" text={author ? `por ${author}` : kind === 'PREP' ? 'Meu' : 'Minha'} shrink />
         </View>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.muted} />
@@ -187,17 +222,6 @@ function Meta({ icon, text, shrink }: { icon: ComponentProps<typeof Ionicons>['n
     </View>
   );
 }
-
-const local = StyleSheet.create({
-  icon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
 
 /** Biblioteca pública (receitas de outras pessoas). */
 function ExploreList({ query }: { query: string }) {
@@ -278,7 +302,7 @@ function ExploreList({ query }: { query: string }) {
         ) : undefined
       }
       renderItem={({ item }) => (
-        <RecipeListItem id={item.id} name={item.name} description={item.description} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
+        <RecipeListItem id={item.id} kind={item.kind} name={item.name} description={item.description} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
       )}
       ListEmptyComponent={
         error ? undefined : allSaved ? (

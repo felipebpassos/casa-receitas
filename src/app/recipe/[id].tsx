@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } fro
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { confirm } from '@/components/ConfirmDialog';
 import { DayPicker } from '@/components/DayPicker';
+import { KIND, KindIcon } from '@/components/RecipeKind';
 import { RichText } from '@/components/RichText';
 import { StatusBadge } from '@/components/StatusBadge';
-import { colors, fonts, radius, spacing } from '@/components/theme';
+import { colors, fonts, spacing } from '@/components/theme';
 import { ErrorView } from '@/components/ErrorState';
 import { toast } from '@/components/Toast';
 import { BottomBar, Button, EmptyState, Loading, styles } from '@/components/ui';
@@ -202,7 +203,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
           </View>
         )}
 
-        {/* Ingredientes: os da receita e, em seguida, as subreceitas (clicáveis) */}
+        {/* Ingredientes: os da receita e, em seguida, os preparos (clicáveis) */}
         {recipe.items.length > 0 && (
           <Section title="Ingredientes">
             <View style={[styles.card, { padding: 0 }]}>
@@ -220,7 +221,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
                 const sub = ctx.getRecipe(item.subRecipeId!);
                 const qty = formatQuantity(item.quantity, item.unit);
                 const count = sub?.items.length ?? 0;
-                const caption = sub ? ['Subreceita', qty, `${count} ${count === 1 ? 'item' : 'itens'}`].filter(Boolean).join(' · ') : 'Receita indisponível';
+                const caption = sub ? ['Preparo', qty, `${count} ${count === 1 ? 'item' : 'itens'}`].filter(Boolean).join(' · ') : 'Preparo indisponível';
                 return (
                   <View key={item.id}>
                     {(ingredients.length > 0 || idx > 0) && <View style={styles.separator} />}
@@ -228,19 +229,17 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
                       disabled={!sub}
                       onPress={() => router.push({ pathname: '/recipe/[id]', params: { id: item.subRecipeId! } })}
                       accessibilityRole="link"
-                      accessibilityLabel={sub ? `Subreceita ${sub.name}. Abrir receita` : 'Subreceita indisponível'}
+                      accessibilityLabel={sub ? `Preparo ${sub.name}. Abrir preparo` : 'Preparo indisponível'}
                       style={({ pressed }) => [
                         styles.row,
                         { paddingHorizontal: spacing.md, paddingVertical: spacing.md, gap: spacing.md },
-                        pressed && { backgroundColor: colors.primaryLight },
+                        pressed && { backgroundColor: KIND.PREP.background },
                       ]}
                     >
-                      <View style={local.subIcon}>
-                        <Ionicons name="book-outline" size={18} color={colors.primary} />
-                      </View>
+                      <KindIcon kind="PREP" size={32} />
                       <View style={{ flex: 1 }}>
                         <Text style={[styles.body, { fontWeight: '600', color: sub ? colors.text : colors.muted }]} numberOfLines={1}>
-                          {sub?.name ?? 'Subreceita'}
+                          {sub?.name ?? 'Preparo'}
                         </Text>
                         <Text style={styles.muted}>{caption}</Text>
                       </View>
@@ -350,14 +349,6 @@ const local = StyleSheet.create({
   headerName: { fontSize: 21, fontFamily: fonts.serifSemiBold, color: colors.text },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
   qty: { fontSize: 14, color: colors.muted, fontWeight: '600' },
-  subIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   headerAction: {
     width: 40,
     height: 40,
