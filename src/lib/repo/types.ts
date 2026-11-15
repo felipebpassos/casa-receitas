@@ -1,4 +1,4 @@
-import type { MealPlan, Recipe, ShoppingCheck, ShoppingExtra, Snapshot } from '../types';
+import type { MealPlan, Recipe, Snapshot } from '../types';
 
 /**
  * Onde os dados do usuário moram. Duas implementações:
@@ -12,9 +12,4 @@ export interface Repo {
   deleteRecipe(id: string): Promise<void>;
   addMealPlan(plan: MealPlan): Promise<void>;
   removeMealPlan(id: string): Promise<void>;
-  addExtra(extra: ShoppingExtra): Promise<void>;
-  updateExtra(id: string, patch: Partial<Pick<ShoppingExtra, 'purchased'>>): Promise<void>;
-  deleteExtra(id: string): Promise<void>;
-  /** Risca (checked = true) ou desrisca itens da lista de compras. */
-  setChecks(checks: ShoppingCheck[], checked: boolean): Promise<void>;
 }

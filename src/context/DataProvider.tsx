@@ -9,14 +9,11 @@ import { RemoteRepo } from '@/lib/repo/remoteRepo';
 import type { Repo } from '@/lib/repo/types';
 import { parentsOf, type NeedsContext } from '@/lib/shopping';
 import {
-  checkKey,
   emptySnapshot,
   type Ingredient,
   type MealPlan,
   type PublicRecipeTree,
   type Recipe,
-  type ShoppingCheck,
-  type ShoppingExtra,
   type Snapshot,
 } from '@/lib/types';
 import { useAuth } from './AuthProvider';
@@ -52,15 +49,6 @@ type DataState = {
   mealPlans: MealPlan[];
   addMealPlan: (date: string, recipeId: string) => Promise<boolean>;
   removeMealPlan: (id: string) => Promise<boolean>;
-
-  extras: ShoppingExtra[];
-  addExtra: (weekStart: string, name: string, quantity: number | null, unit: string | null) => Promise<boolean>;
-  setExtraPurchased: (id: string, purchased: boolean) => Promise<boolean>;
-  deleteExtra: (id: string) => Promise<boolean>;
-
-  /** Itens riscados na lista de compras. */
-  isChecked: (check: ShoppingCheck) => boolean;
-  setChecked: (checks: ShoppingCheck[], checked: boolean) => Promise<boolean>;
 
   /** Contexto de cálculo da lista de compras para as receitas da coleção. */
   needsContext: NeedsContext;
@@ -130,13 +118,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const ingredientById = useMemo(() => new Map(catalog.map((i) => [i.id, i])), [catalog]);
   const recipeById = useMemo(() => new Map(snap.recipes.map((r) => [r.id, r])), [snap.recipes]);
   const recipes = useMemo(() => [...snap.recipes].sort(byName), [snap.recipes]);
-  const checkedKeys = useMemo(() => new Set(snap.checks.map(checkKey)), [snap.checks]);
 
   const getIngredient = useCallback((id: string) => ingredientById.get(id), [ingredientById]);
   const ingredientName = useCallback((id: string) => ingredientById.get(id)?.name ?? 'Ingrediente', [ingredientById]);
   const getRecipe = useCallback((id: string) => recipeById.get(id), [recipeById]);
   const findCopyOf = useCallback((publicId: string) => snap.recipes.find((r) => r.originRecipeId === publicId), [snap.recipes]);
-  const isChecked = useCallback((c: ShoppingCheck) => checkedKeys.has(checkKey(c)), [checkedKeys]);
 
   const needsContext = useMemo<NeedsContext>(() => ({ getRecipe: (id) => recipeById.get(id), ingredientName }), [recipeById, ingredientName]);
 
@@ -212,7 +198,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
           ...s,
           recipes: s.recipes.filter((r) => r.id !== id),
           mealPlans: s.mealPlans.filter((p) => p.recipeId !== id),
-          checks: s.checks.filter((c) => c.recipeId !== id),
         }),
         () => repo.deleteRecipe(id),
       );
@@ -285,39 +270,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [repo, run],
   );
 
-  const addExtra = useCallback(
-    (weekStart: string, name: string, quantity: number | null, unit: string | null) => {
-      const extra: ShoppingExtra = { id: newId(), weekStart, name: name.trim(), quantity, unit, purchased: false };
-      return run((s) => ({ ...s, extras: [...s.extras, extra] }), () => repo.addExtra(extra));
-    },
-    [repo, run],
-  );
-
-  const setExtraPurchased = useCallback(
-    (id: string, purchased: boolean) =>
-      run((s) => ({ ...s, extras: s.extras.map((e) => (e.id === id ? { ...e, purchased } : e)) }), () => repo.updateExtra(id, { purchased })),
-    [repo, run],
-  );
-
-  const deleteExtra = useCallback(
-    (id: string) => run((s) => ({ ...s, extras: s.extras.filter((e) => e.id !== id) }), () => repo.deleteExtra(id)),
-    [repo, run],
-  );
-
-  const setChecked = useCallback(
-    (checks: ShoppingCheck[], checked: boolean) => {
-      const keys = new Set(checks.map(checkKey));
-      return run(
-        (s) => {
-          const rest = s.checks.filter((c) => !keys.has(checkKey(c)));
-          return { ...s, checks: checked ? [...rest, ...checks] : rest };
-        },
-        () => repo.setChecks(checks, checked),
-      );
-    },
-    [repo, run],
-  );
-
   const value: DataState = {
     ready: loadedKey === key,
     initialized: loadedKey !== null,
@@ -342,12 +294,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     mealPlans: snap.mealPlans,
     addMealPlan,
     removeMealPlan,
-    extras: snap.extras,
-    addExtra,
-    setExtraPurchased,
-    deleteExtra,
-    isChecked,
-    setChecked,
     needsContext,
   };
 

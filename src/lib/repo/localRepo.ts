@@ -1,12 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GLOBAL_CATALOG } from '../catalog';
 import { inferKind, normalizeName } from '../shopping';
-import { emptySnapshot, checkKey, type Recipe, type Snapshot } from '../types';
+import { emptySnapshot, type Recipe, type Snapshot } from '../types';
 import type { Repo } from './types';
 
 const KEY = 'receitas-de-casa:data:v1';
 
-/** Formato antigo (com Despensa, ingredientes personalizados, isPublic e sem tipo Receita/Preparo). */
+/** Formato antigo (com Despensa, lista de compras salva, ingredientes personalizados, isPublic e sem tipo Receita/Preparo). */
 type LegacyData = Omit<Partial<Snapshot>, 'recipes'> & {
   customIngredients?: { id: string; name: string }[];
   recipes?: (Omit<Recipe, 'status' | 'rejectionReason' | 'kind'> &
@@ -35,7 +35,7 @@ function normalize(raw: LegacyData): Snapshot {
     }),
   }));
 
-  return { ...emptySnapshot(), mealPlans: raw.mealPlans ?? [], extras: raw.extras ?? [], checks: raw.checks ?? [], recipes };
+  return { ...emptySnapshot(), mealPlans: raw.mealPlans ?? [], recipes };
 }
 
 /** Dados do usuário sem login: um único JSON no AsyncStorage. */
@@ -62,7 +62,7 @@ class LocalRepo implements Repo {
 
   async isEmpty() {
     const d = await this.data();
-    return d.recipes.length === 0 && d.mealPlans.length === 0 && d.extras.length === 0 && d.checks.length === 0;
+    return d.recipes.length === 0 && d.mealPlans.length === 0;
   }
 
   async clear() {
@@ -81,7 +81,6 @@ class LocalRepo implements Repo {
     this.update((d) => {
       d.recipes = d.recipes.filter((r) => r.id !== id);
       d.mealPlans = d.mealPlans.filter((p) => p.recipeId !== id);
-      d.checks = d.checks.filter((c) => c.recipeId !== id);
     });
 
   addMealPlan: Repo['addMealPlan'] = (plan) =>
@@ -92,28 +91,6 @@ class LocalRepo implements Repo {
   removeMealPlan: Repo['removeMealPlan'] = (id) =>
     this.update((d) => {
       d.mealPlans = d.mealPlans.filter((p) => p.id !== id);
-    });
-
-  addExtra: Repo['addExtra'] = (extra) =>
-    this.update((d) => {
-      d.extras.push(extra);
-    });
-
-  updateExtra: Repo['updateExtra'] = (id, patch) =>
-    this.update((d) => {
-      d.extras = d.extras.map((e) => (e.id === id ? { ...e, ...patch } : e));
-    });
-
-  deleteExtra: Repo['deleteExtra'] = (id) =>
-    this.update((d) => {
-      d.extras = d.extras.filter((e) => e.id !== id);
-    });
-
-  setChecks: Repo['setChecks'] = (checks, checked) =>
-    this.update((d) => {
-      const keys = new Set(checks.map(checkKey));
-      d.checks = d.checks.filter((c) => !keys.has(checkKey(c)));
-      if (checked) d.checks.push(...checks);
     });
 }
 

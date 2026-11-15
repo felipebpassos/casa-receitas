@@ -54,39 +54,18 @@ export type MealPlan = {
   recipeId: string;
 };
 
-export type ShoppingExtra = {
-  id: string;
-  weekStart: string;
-  name: string;
-  quantity: number | null;
-  unit: string | null;
-  purchased: boolean;
-};
-
-/** Item riscado na lista de compras da semana (no grupo da receita/subpreparo `recipeId`). */
-export type ShoppingCheck = {
-  weekStart: string;
-  recipeId: string;
-  ingredientId: string;
-  /** Unidade normalizada (kg→g, l→ml); '' quando não há. */
-  unit: string;
-};
-
-export const checkKey = (c: ShoppingCheck) => `${c.weekStart}|${c.recipeId}|${c.ingredientId}|${c.unit}`;
-
-/** Todos os dados do usuário (no celular ou na conta). */
+/**
+ * Todos os dados do usuário (no celular ou na conta).
+ * A lista de compras não entra aqui: fica só no celular (veja useShoppingList).
+ */
 export type Snapshot = {
   recipes: Recipe[];
   mealPlans: MealPlan[];
-  extras: ShoppingExtra[];
-  checks: ShoppingCheck[];
 };
 
 export const emptySnapshot = (): Snapshot => ({
   recipes: [],
   mealPlans: [],
-  extras: [],
-  checks: [],
 });
 
 /** Receita pública de outra pessoa, com as subreceitas e nomes de ingredientes necessários. */

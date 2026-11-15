@@ -8,11 +8,16 @@ import { IconButton, styles } from './ui';
 export function ModalScreen({
   visible,
   title,
+  subtitle,
+  actions,
   onClose,
   children,
 }: {
   visible: boolean;
   title: string;
+  subtitle?: string;
+  /** Botões à direita do título. */
+  actions?: ReactNode;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -28,7 +33,11 @@ export function ModalScreen({
               ]}
             >
               <IconButton name="close" label="Fechar" color={colors.text} onPress={onClose} />
-              <Text style={[styles.subtitle, { flex: 1 }]}>{title}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.subtitle}>{title}</Text>
+                {subtitle ? <Text style={styles.muted}>{subtitle}</Text> : null}
+              </View>
+              {actions}
             </View>
             {children}
           </KeyboardAvoidingView>

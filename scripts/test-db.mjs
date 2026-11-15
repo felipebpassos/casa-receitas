@@ -186,15 +186,8 @@ ok(!!pubCopy.error, 'cópia de receita de outra pessoa não pode ser enviada', p
 const useOthers = await B.c.rpc('save_recipe', { p: recipe({ name: 'Usa molho da Ana' }, [{ sub_recipe_id: molho.id }]) });
 ok(!!useOthers.error, 'Beto não usa receita da Ana como subreceita (só a própria cópia)', useOthers.error?.message);
 
-// ------------------------------------------------------------ semana, itens riscados e avulsos
+// ------------------------------------------------------------ semana
 ok(!(await B.c.from('meal_plans').insert({ id: randomUUID(), user_id: B.id, date: '2026-11-10', recipe_id: lasCopy.id })).error, 'Beto planeja a cópia dele');
-const chk = { user_id: B.id, week_start: '2026-11-09', recipe_id: molhoCopy.id, ingredient_id: gid('Carne moída'), unit: 'g' };
-const c1 = await B.c.from('shopping_checks').upsert(chk, { onConflict: 'user_id,week_start,recipe_id,ingredient_id,unit', ignoreDuplicates: true });
-const c2 = await B.c.from('shopping_checks').upsert(chk, { onConflict: 'user_id,week_start,recipe_id,ingredient_id,unit', ignoreDuplicates: true });
-ok(!c1.error && !c2.error, 'riscar item é idempotente', c1.error ?? c2.error);
-const peek = await A.c.from('shopping_checks').select('*').eq('user_id', B.id);
-ok(peek.data?.length === 0, 'Ana não vê a lista do Beto', peek.data);
-ok(!(await B.c.from('shopping_extras').insert({ id: randomUUID(), user_id: B.id, week_start: '2026-11-09', name: 'Detergente' })).error, 'item avulso');
 
 // Exclusão protegida
 const del = await A.c.from('recipes').delete().eq('id', molho.id);

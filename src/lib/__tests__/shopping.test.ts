@@ -7,6 +7,9 @@ import {
   countItems,
   formatQuantity,
   inferKind,
+  listCheckKey,
+  pruneWeeks,
+  shoppingListText,
   type NeedGroup,
   type NeedsContext,
   type RecipeLike,
@@ -111,6 +114,30 @@ test('ciclo entre receitas não trava o cálculo', () => {
   const groups = computeGroups(['a'], ctx([a, b]));
   assert.deepEqual(groups.map((g) => g.recipeId), ['a', 'b']);
   assert.equal(countItems(groups), 2);
+});
+
+test('texto para compartilhar: só o que não foi riscado, por receita/preparo', () => {
+  const groups = computeGroups(['lasanha'], ctx(all));
+  const lasanhaGroup = group(groups, 'lasanha');
+  const molhoGroup = group(groups, 'molho');
+  const checked = [
+    ...lasanhaGroup.items.filter((i) => i.ingredientId === 'mussarela').map((i) => listCheckKey(lasanhaGroup, i)),
+    ...molhoGroup.items.map((i) => listCheckKey(molhoGroup, i)), // molho pronto
+  ];
+  const text = shoppingListText('Lista', groups, {
+    checked,
+    extras: [
+      { id: 'e1', name: 'Detergente', quantity: 2, unit: 'unidade', checked: false },
+      { id: 'e2', name: 'Esponja', quantity: null, unit: null, checked: true },
+    ],
+  });
+  assert.equal(text, 'Lista\n\nLasanha\n• Massa de lasanha 1 pacote\n\nOutros itens\n• Detergente 2 unidade');
+  assert.equal(shoppingListText('Lista', [], { checked: [], extras: [] }), '');
+});
+
+test('listas de semanas passadas são descartadas', () => {
+  const store = { '2026-11-02': { checked: ['a'], extras: [] }, '2026-11-09': { checked: ['b'], extras: [] }, '2026-11-16': { checked: [], extras: [] } };
+  assert.deepEqual(Object.keys(pruneWeeks(store, '2026-11-09')), ['2026-11-09', '2026-11-16']);
 });
 
 test('só preparos (sem outros preparos dentro) podem virar ingrediente, e nunca de si mesmos', () => {

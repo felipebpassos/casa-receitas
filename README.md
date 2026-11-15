@@ -7,7 +7,7 @@ App Android (React Native + Expo + Supabase) para **escolher as receitas da sema
 | Aba | O que faz |
 | --- | --- |
 | **Receitas** | **Meu caderno** (criadas por você + cópias salvas de outras pessoas) e **Explorar** (biblioteca pública, só receitas aprovadas). |
-| **Semana** | Plano da semana (várias receitas por dia, qualquer semana), **lista de compras** agrupada por preparo, com itens que dá para riscar, e itens avulsos. |
+| **Semana** | Plano da semana (várias receitas por dia, qualquer semana) e botão **Gerar lista de compras**: abre a lista em tela cheia, agrupada por preparo, para riscar o que já tem, adicionar itens avulsos e compartilhar. |
 
 ## Como funciona
 
@@ -17,7 +17,7 @@ App Android (React Native + Expo + Supabase) para **escolher as receitas da sema
 - **Lista de compras agrupada por preparo.** Cada receita da semana e cada subpreparo vira um grupo com os seus ingredientes. Ingredientes de grupos diferentes **não são somados**: assim fica claro quanto de cada item vai em cada preparo.
   - Dentro de um grupo, o mesmo ingrediente com unidade compatível é somado (kg→g e l→ml são convertidos).
   - Receita planejada duas vezes, ou subpreparo usado por duas receitas, conta uma vez por uso.
-- **Riscar.** Na Semana, toque no item para riscá-lo (já tenho / já peguei). Já tem um preparo pronto? Use **Riscar tudo** no grupo dele. O que você risca vale só para aquela semana.
+- **Riscar.** Na lista de compras, toque no item para riscá-lo (já tenho / já peguei). Já tem um preparo pronto? Use **Riscar tudo** no grupo dele. Cada semana tem a sua lista, guardada só no celular; as de semanas passadas são apagadas.
 - **Salvar receita de outra pessoa** cria uma **cópia** no seu caderno, com o crédito do autor. As subreceitas vêm junto. Cópias não podem ser enviadas para a biblioteca.
 - **Biblioteca pública com moderação.** Ao marcar **Enviar para a biblioteca pública** (exige login), a receita e as subreceitas dela ficam **em análise** (`PENDING`). Você continua podendo usá-las na sua semana. Elas só aparecem em Explorar depois de **aprovadas** (`APPROVED`). Alterar uma receita aprovada a devolve para análise.
 - **Origem da receita.** Cada receita guarda o link do vídeo ou da receita original e identifica a plataforma (YouTube, Instagram, TikTok, Facebook, Pinterest ou site).
@@ -142,4 +142,4 @@ supabase/migrations/          SQL do banco (tabelas, RLS, funções)
 - **Catálogo embutido + atualizado.** O catálogo global vem dentro do app, com os mesmos IDs do banco, para o modo sem conta funcionar offline. Ao abrir, o app baixa o catálogo do servidor e guarda em cache, para que ingredientes aprovados depois apareçam sem build nova.
 - **IDs gerados no app (UUID).** Os dados locais sobem para a conta com os mesmos IDs. A migração pode ser repetida sem duplicar nada.
 - **Uma interface, duas implementações.** As telas usam só o `DataProvider`, que fala com uma interface `Repo` implementada pelo celular (`LocalRepo`) e pela conta (`RemoteRepo`).
-- **Segurança (RLS + triggers).** Receitas privadas, semana, itens riscados e avulsos só são acessíveis pelo dono. Visitantes sem login só leem receitas `APPROVED`. Ingredientes são somente leitura para o app. O trigger `recipes_guard_status` impede que usuários aprovem receitas e devolve para análise qualquer alteração em receita aprovada. `save_recipe` grava receita e itens numa transação e envia as subreceitas para análise junto.
+- **Segurança (RLS + triggers).** Receitas privadas e o plano da semana só são acessíveis pelo dono. A lista de compras (riscos e itens avulsos) não vai para o banco: fica só no celular. Visitantes sem login só leem receitas `APPROVED`. Ingredientes são somente leitura para o app. O trigger `recipes_guard_status` impede que usuários aprovem receitas e devolve para análise qualquer alteração em receita aprovada. `save_recipe` grava receita e itens numa transação e envia as subreceitas para análise junto.

@@ -155,6 +155,45 @@ export function computeGroups(recipeIds: string[], ctx: NeedsContext): NeedGroup
     .filter((g) => g.items.length > 0);
 }
 
+// ------------------------------------------------------------ lista de compras (só no celular)
+
+/** Item avulso da lista (detergente etc.). */
+export type ListExtra = { id: string; name: string; quantity: number | null; unit: string | null; checked: boolean };
+
+/** Estado da lista de uma semana. Riscos: `${recipeId}|${item.key}`. */
+export type WeekList = { checked: string[]; extras: ListExtra[] };
+
+/** Listas salvas no celular, por início da semana. */
+export type ListStore = Record<string, WeekList>;
+
+export const emptyWeekList = (): WeekList => ({ checked: [], extras: [] });
+
+export const listCheckKey = (group: NeedGroup, item: NeedItem) => `${group.recipeId}|${item.key}`;
+
+/** Descarta as listas de semanas que já passaram. */
+export function pruneWeeks(store: ListStore, currentWeekStart: string): ListStore {
+  return Object.fromEntries(Object.entries(store).filter(([week]) => week >= currentWeekStart));
+}
+
+/** Texto para compartilhar (WhatsApp etc.): só o que ainda não foi riscado. Vazio se não falta nada. */
+export function shoppingListText(title: string, groups: NeedGroup[], list: WeekList): string {
+  const checked = new Set(list.checked);
+  const line = (name: string, quantity: number | null, unit: string | null) => {
+    const qty = formatQuantity(quantity, unit);
+    return `• ${name}${qty ? ` ${qty}` : ''}`;
+  };
+
+  const sections: string[] = [];
+  for (const g of groups) {
+    const pending = g.items.filter((i) => !checked.has(listCheckKey(g, i)));
+    if (pending.length) sections.push([g.name, ...pending.map((i) => line(i.name, i.quantity, i.unit))].join('\n'));
+  }
+  const extras = list.extras.filter((e) => !e.checked);
+  if (extras.length) sections.push(['Outros itens', ...extras.map((e) => line(e.name, e.quantity, e.unit))].join('\n'));
+
+  return sections.length ? [title, ...sections].join('\n\n') : '';
+}
+
 /** Quantos itens há na lista agrupada. */
 export const countItems = (groups: NeedGroup[]) => groups.reduce((n, g) => n + g.items.length, 0);
 

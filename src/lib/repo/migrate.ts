@@ -18,8 +18,6 @@ export async function migrateLocalToRemote(remote: RemoteRepo): Promise<boolean>
   for (const recipe of dependencyOrder(recipes)) await remote.saveRecipe({ ...recipe, status: 'PRIVATE' });
 
   for (const plan of local.mealPlans) if (kept.has(plan.recipeId)) await remote.addMealPlan(plan);
-  for (const extra of local.extras) await remote.addExtra(extra);
-  await remote.setChecks(local.checks.filter((c) => kept.has(c.recipeId)), true);
 
   await localRepo.clear();
   return true;
