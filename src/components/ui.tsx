@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
@@ -264,9 +264,15 @@ export function Chip({
 
 /** Seletor horizontal de opções (ex.: unidades). */
 export function ChipSelect({ options, value, onChange }: { options: readonly string[]; value: string | null; onChange: (v: string) => void }) {
+  const scrollRef = useRef<ScrollView>(null);
+  // A opção selecionada vai para a frente; ao mudar a seleção, volta a rolagem ao início para ela ficar visível.
+  const ordered = value && options.includes(value) ? [value, ...options.filter((o) => o !== value)] : options;
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ x: 0, animated: true });
+  }, [value]);
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }} keyboardShouldPersistTaps="handled">
-      {options.map((o) => (
+    <ScrollView ref={scrollRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs }} keyboardShouldPersistTaps="handled">
+      {ordered.map((o) => (
         <Chip key={o} label={o} selected={o === value} onPress={() => onChange(o)} />
       ))}
     </ScrollView>
