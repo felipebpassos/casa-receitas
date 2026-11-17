@@ -6,7 +6,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { confirm } from '@/components/ConfirmDialog';
 import { colors, fonts, radius, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
-import { Button, styles as ui } from '@/components/ui';
+import { Button, IconButton, styles as ui } from '@/components/ui';
 import { UsernameDialog } from '@/components/UsernameDialog';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
@@ -68,9 +68,12 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
             </View>
           )}
         </View>
-        <Text style={s.name} numberOfLines={1}>
-          {name}
-        </Text>
+        <View style={s.nameRow}>
+          <Text style={s.name} numberOfLines={1}>
+            {name}
+          </Text>
+          {username && <IconButton name="create-outline" label="Editar nome de usuário" size={20} color={colors.primary} onPress={() => setEditingUsername(true)} />}
+        </View>
         <Text style={ui.muted} numberOfLines={1}>
           {email}
         </Text>
@@ -78,7 +81,7 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
 
       {/* Números */}
       <View style={s.stats}>
-        <Stat icon="book-outline" value={stats.total} label={stats.total === 1 ? 'receita' : 'receitas'} onPress={() => router.navigate('/')} />
+        <Stat icon="book-outline" value={stats.total} label={'salvas'} onPress={() => router.navigate('/')} />
         <Stat icon="globe-outline" value={stats.published} label={stats.published === 1 ? 'publicada' : 'publicadas'} onPress={openPublicProfile} />
       </View>
 
@@ -86,9 +89,7 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       <View>
         <Text style={[ui.label, s.sectionLabel]}>Atalhos</Text>
         <View style={s.menu}>
-          <MenuRow icon="person-outline" title="Nome de usuário" subtitle={username ?? 'Como seus amigos te encontram'} onPress={() => setEditingUsername(true)} />
           <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.push('/recipe/new')} />
-          <MenuRow icon="person-circle-outline" title="Meu perfil público" subtitle="O que outras pessoas veem de você" onPress={openPublicProfile} />
           <MenuRow icon="book-outline" title="Meu caderno" subtitle="Suas receitas e as que você salvou" onPress={() => router.navigate('/')} />
           <MenuRow icon="compass-outline" title="Explorar receitas" subtitle="Veja o que outras pessoas publicaram" onPress={() => router.navigate({ pathname: '/', params: { tab: 'explore' } })} />
           <MenuRow icon="cart-outline" title="Semana e lista de compras" subtitle="Planeje as refeições" onPress={() => router.navigate('/semana')} last />
@@ -140,7 +141,8 @@ const s = StyleSheet.create({
   avatar: { width: 88, height: 88, borderRadius: radius.pill },
   avatarFallback: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontFamily: fonts.serifBold, fontSize: 32, color: colors.onPrimary },
-  name: { fontFamily: fonts.serifBold, fontSize: 24, color: colors.text, maxWidth: '100%' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, maxWidth: '100%' },
+  name: { fontFamily: fonts.serifBold, fontSize: 24, color: colors.text, flexShrink: 1 },
   stats: { flexDirection: 'row', gap: spacing.sm },
   stat: {
     flex: 1,
