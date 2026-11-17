@@ -141,9 +141,24 @@ export function PasswordInput(props: Omit<TextInputProps, 'secureTextEntry'> & {
   );
 }
 
-export function SearchBar({ value, onChangeText, placeholder }: { value: string; onChangeText: (t: string) => void; placeholder: string }) {
+export function SearchBar({
+  value,
+  onChangeText,
+  placeholder,
+  onSubmit,
+  autoFocus,
+  style,
+}: {
+  value: string;
+  onChangeText: (t: string) => void;
+  placeholder: string;
+  /** Tecla "buscar" do teclado. */
+  onSubmit?: () => void;
+  autoFocus?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
-    <View style={styles.search}>
+    <View style={[styles.search, style]}>
       <Ionicons name="search" size={18} color={colors.muted} />
       <TextInput
         value={value}
@@ -152,7 +167,9 @@ export function SearchBar({ value, onChangeText, placeholder }: { value: string;
         placeholderTextColor={colors.muted}
         style={styles.searchInput}
         autoCorrect={false}
+        autoFocus={autoFocus}
         returnKeyType="search"
+        onSubmitEditing={onSubmit}
       />
       {value.length > 0 && <IconButton name="close-circle" label="Limpar busca" size={18} onPress={() => onChangeText('')} />}
     </View>

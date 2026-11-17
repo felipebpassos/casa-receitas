@@ -24,6 +24,17 @@ export async function searchPublicRecipes(q: string, excludeUserId: string | nul
   return (data as SummaryRow[]).filter((r) => r.user_id !== excludeUserId).map(toSummary);
 }
 
+export type PublicPersonSummary = { id: string; name: string | null; recipeCount: number };
+
+/** Busca de pessoas do Explorar: quem tem receitas ou preparos públicos. */
+export async function searchPublicProfiles(q: string, excludeUserId: string | null): Promise<PublicPersonSummary[]> {
+  const { data, error, status } = await supabase.rpc('search_public_profiles', { q });
+  if (error) throw serviceError({ ...error, status });
+  return (data as { id: string; display_name: string | null; recipe_count: number }[])
+    .filter((p) => p.id !== excludeUserId)
+    .map((p) => ({ id: p.id, name: p.display_name, recipeCount: Number(p.recipe_count) }));
+}
+
 export type PublicProfile = { id: string; name: string | null; recipes: PublicRecipeSummary[] };
 
 /** Perfil público: nome e todas as receitas e preparos públicos da pessoa. */

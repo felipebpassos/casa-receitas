@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { NewRecipeDialog } from '@/components/NewRecipeDialog';
 import { RecipeListItem } from '@/components/RecipeListItem';
@@ -45,11 +45,11 @@ export default function RecipesScreen() {
             { value: 'explore', label: 'Explorar', icon: 'compass-outline' },
           ]}
         />
-        {/* Abaixo do toggle: cada aba busca coisas diferentes (no futuro, Explorar também busca perfis). */}
+        {/* Abaixo do toggle: cada aba busca coisas diferentes. Pessoas têm busca própria (Buscar amigos). */}
         <SearchBar
           value={query}
           onChangeText={setQuery}
-          placeholder={tab === 'explore' ? 'Buscar receitas ou pessoas...' : 'Buscar no seu caderno...'}
+          placeholder={tab === 'explore' ? 'Buscar receitas e preparos...' : 'Buscar no seu caderno...'}
         />
       </View>
 
@@ -162,10 +162,11 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
   );
 }
 
-/** Biblioteca pública (receitas de outras pessoas). */
+/** Biblioteca pública: uma categoria por vez (Receitas ou Preparos). Pessoas ficam na busca de amigos. */
 function ExploreList({ query }: { query: string }) {
   const { userId } = useAuth();
   const { findCopyOf } = useData();
+  const [kind, setKind] = useState<RecipeKind>('RECIPE');
   const [results, setResults] = useState<PublicRecipeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
@@ -210,50 +211,100 @@ function ExploreList({ query }: { query: string }) {
   if (!isSupabaseConfigured) {
     return <EmptyState icon="cloud-offline-outline" title="Receitas publicadas indisponíveis" subtitle="O app não está conectado ao servidor." />;
   }
-  if (loading) return <Loading />;
+
+  // Categorias à esquerda; atalho discreto para buscar amigos à direita.
+  const header = (
+    <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }]}>
+      <View style={[styles.row, { gap: spacing.xs, flex: 1 }]} accessibilityRole="tablist">
+        {(['RECIPE', 'PREP'] as const).map((k) => (
+          <Chip key={k} label={KIND[k].plural} selected={kind === k} onPress={() => setKind(k)} />
+        ))}
+      </View>
+      <Pressable
+        onPress={() => router.push('/people')}
+        accessibilityRole="link"
+        accessibilityLabel="Buscar amigos"
+        hitSlop={8}
+        style={({ pressed }) => [styles.row, { gap: 4 }, pressed && { opacity: 0.6 }]}
+      >
+        <Ionicons name="people-outline" size={18} color={colors.muted} />
+        <Text style={styles.muted}>Buscar amigos</Text>
+      </Pressable>
+    </View>
+  );
+
+  if (loading)
+    return (
+      <View style={{ flex: 1 }}>
+        {header}
+        <Loading />
+      </View>
+    );
 
   // Sem nada para mostrar: erro ocupa a área. Com resultados antigos: aviso no topo, lista continua.
   if (error && results.length === 0) {
-    return <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />;
+    return (
+      <View style={{ flex: 1 }}>
+        {header}
+        <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />
+      </View>
+    );
   }
 
   // As que já estão no caderno não aparecem aqui.
-  const visible = results.filter((r) => !findCopyOf(r.id));
-  const allSaved = results.length > 0 && visible.length === 0;
+  const ofKind = results.filter((r) => r.kind === kind);
+  const visible = ofKind.filter((r) => !findCopyOf(r.id));
+  const allSaved = ofKind.length > 0 && visible.length === 0;
+  const isPrep = kind === 'PREP';
 
   return (
-    <FlatList
-      data={visible}
-      keyExtractor={(r) => r.id}
-      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
-      ListHeaderComponent={
-        error ? (
-          <ErrorBanner
-            error={error}
-            message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
-            onRetry={retry}
-            retrying={refreshing}
-            onDismiss={() => setError(null)}
-            style={{ marginBottom: spacing.xs }}
-          />
-        ) : undefined
-      }
-      renderItem={({ item }) => (
-        <RecipeListItem id={item.id} kind={item.kind} name={item.name} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
-      )}
-      ListEmptyComponent={
-        error ? undefined : allSaved ? (
-          <EmptyState icon="bookmark-outline" title="Você já salvou todas" subtitle="As receitas que você salvou estão no seu caderno." />
-        ) : (
-          <EmptyState
-            icon="globe-outline"
-            title={query ? 'Nenhuma receita encontrada' : 'Nenhuma receita publicada ainda'}
-            subtitle={query ? undefined : 'Em breve, novas receitas por aqui.'}
-          />
-        )
-      }
-    />
+    <View style={{ flex: 1 }}>
+      {header}
+      <FlatList
+        data={visible}
+        keyExtractor={(r) => r.id}
+        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
+        ListHeaderComponent={
+          error ? (
+            <ErrorBanner
+              error={error}
+              message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
+              onRetry={retry}
+              retrying={refreshing}
+              onDismiss={() => setError(null)}
+              style={{ marginBottom: spacing.xs }}
+            />
+          ) : undefined
+        }
+        renderItem={({ item }) => (
+          <RecipeListItem id={item.id} kind={item.kind} name={item.name} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
+        )}
+        ListEmptyComponent={
+          error ? undefined : allSaved ? (
+            <EmptyState
+              icon="bookmark-outline"
+              title={isPrep ? 'Você já salvou todos' : 'Você já salvou todas'}
+              subtitle={`${isPrep ? 'Os preparos' : 'As receitas'} que você salvou estão no seu caderno.`}
+            />
+          ) : (
+            <EmptyState
+              icon={KIND[kind].icon}
+              title={
+                query
+                  ? isPrep
+                    ? 'Nenhum preparo encontrado'
+                    : 'Nenhuma receita encontrada'
+                  : isPrep
+                    ? 'Nenhum preparo publicado ainda'
+                    : 'Nenhuma receita publicada ainda'
+              }
+              subtitle={query ? undefined : 'Em breve, novidades por aqui.'}
+            />
+          )
+        }
+      />
+    </View>
   );
 }

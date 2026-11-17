@@ -314,9 +314,16 @@ function RecipeMeta({ author, authorId, visibility }: { author: string | null; a
           hitSlop={8}
           style={({ pressed }) => [styles.row, local.meta, { flexShrink: 1 }, pressed && { opacity: 0.6 }]}
         >
-          <Ionicons name="person-outline" size={16} color={colors.primary} />
-          <Text style={[local.metaText, { color: colors.primary }]} numberOfLines={1}>
-            {authorLabel}
+          <Ionicons name="person-outline" size={16} color={colors.muted} />
+          {/* Só o nome tem cara de link; "Por" e o ícone ficam neutros. */}
+          <Text style={local.metaText} numberOfLines={1}>
+            {author ? (
+              <>
+                Por <Text style={{ color: colors.primary }}>{author}</Text>
+              </>
+            ) : (
+              authorLabel
+            )}
           </Text>
         </Pressable>
       ) : (
