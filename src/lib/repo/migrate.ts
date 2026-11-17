@@ -15,7 +15,7 @@ export async function migrateLocalToRemote(remote: RemoteRepo): Promise<boolean>
   const kept = new Set(recipes.map((r) => r.id));
 
   // Receitas: subreceitas antes de quem as usa. Sem login, tudo é privado.
-  for (const recipe of dependencyOrder(recipes)) await remote.saveRecipe({ ...recipe, status: 'PRIVATE' });
+  for (const recipe of dependencyOrder(recipes)) await remote.saveRecipe({ ...recipe, visibility: 'PRIVATE', listed: false });
 
   for (const plan of local.mealPlans) if (kept.has(plan.recipeId)) await remote.addMealPlan(plan);
 

@@ -19,7 +19,7 @@ import { getPublicRecipeTree } from '@/lib/publicLibrary';
 import { parseRichText } from '@/lib/richText';
 import { formatQuantity, type NeedsContext } from '@/lib/shopping';
 import { PLATFORM_ICON, PLATFORM_LABEL, platformOf } from '@/lib/source';
-import type { PublicRecipeTree, Recipe } from '@/lib/types';
+import type { PublicRecipeTree, Recipe, RecipeVisibility } from '@/lib/types';
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -155,9 +155,11 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
 
   const author = isPublicView ? (tree.authorName ?? 'usuário') : (recipe.originAuthorName ?? 'usuário');
   const isOwn = !isPublicView && !isSavedCopy;
-  // Receitas de outras pessoas vêm da biblioteca pública. As próprias: privada
-  // (inclusive recusada), em análise, ou pública depois de aprovada.
-  const visibility: Visibility = !isOwn || recipe.status === 'APPROVED' ? 'PUBLIC' : recipe.status === 'PENDING' ? 'PENDING' : 'PRIVATE';
+  // Receitas de outras pessoas só abrem se forem públicas. As próprias: como o dono escolheu.
+  // (Estar na busca do Explorar é decisão interna e não aparece aqui.)
+  const visibility: RecipeVisibility = !isOwn ? 'PUBLIC' : recipe.visibility;
+  // Autor clicável: abre o perfil público (só quando se sabe quem é).
+  const authorId = isPublicView ? tree.authorId : null;
   const ingredients = recipe.items.filter((i) => !i.subRecipeId);
   const subItems = recipe.items.filter((i) => i.subRecipeId);
   const hasPreparation = parseRichText(recipe.preparation).length > 0;
@@ -202,16 +204,8 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
       {/* Divisória entre o header e o conteúdo */}
       <View style={styles.separator} />
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }}>
-        <RecipeMeta author={isOwn ? null : author} visibility={visibility} />
+        <RecipeMeta author={isOwn ? null : author} authorId={authorId} visibility={visibility} />
         {recipe.description ? <Text style={styles.body}>{recipe.description}</Text> : null}
-
-        {!isPublicView && recipe.status === 'REJECTED' && (
-          <View style={[styles.card, { backgroundColor: colors.dangerLight, borderColor: colors.danger, gap: spacing.xs }]}>
-            <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovada para publicação</Text>
-            <Text style={styles.body}>{recipe.rejectionReason || 'Sem motivo informado.'}</Text>
-            <Text style={styles.muted}>Ela continua no seu caderno. Edite e envie de novo, se quiser.</Text>
-          </View>
-        )}
 
         {/* Ingredientes: botão que abre o modal com os da receita e, em seguida, os preparos (clicáveis) */}
         {recipe.items.length > 0 && (
@@ -298,29 +292,41 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   );
 }
 
-type Visibility = 'PRIVATE' | 'PENDING' | 'PUBLIC';
-
-const VISIBILITY: Record<Visibility, { icon: ComponentProps<typeof Ionicons>['name']; label: string; color: string }> = {
+const VISIBILITY: Record<RecipeVisibility, { icon: ComponentProps<typeof Ionicons>['name']; label: string; color: string }> = {
   PRIVATE: { icon: 'lock-closed-outline', label: 'Privada', color: colors.muted },
-  PENDING: { icon: 'hourglass-outline', label: 'Em análise', color: colors.warning },
   PUBLIC: { icon: 'globe-outline', label: 'Pública', color: colors.muted },
 };
 
 /**
- * Linha de informações no topo do conteúdo: autoria ("Minha" ou "Por fulano")
- * e visibilidade (Privada / Em análise / Pública). "Recusada" conta como privada:
- * o motivo fica no cartão logo abaixo.
+ * Linha de informações no topo do conteúdo: autoria ("Minha" ou "Por fulano", que abre
+ * o perfil público) e visibilidade (Privada / Pública).
  */
-function RecipeMeta({ author, visibility }: { author: string | null; visibility: Visibility }) {
+function RecipeMeta({ author, authorId, visibility }: { author: string | null; authorId: string | null; visibility: RecipeVisibility }) {
   const v = VISIBILITY[visibility];
+  const authorLabel = author ? `Por ${author}` : 'Minha';
   return (
     <View style={[styles.row, { gap: spacing.lg }]}>
-      <View style={[styles.row, local.meta, { flexShrink: 1 }]}>
-        <Ionicons name="person-outline" size={16} color={colors.muted} />
-        <Text style={local.metaText} numberOfLines={1}>
-          {author ? `Por ${author}` : 'Minha'}
-        </Text>
-      </View>
+      {authorId ? (
+        <Pressable
+          onPress={() => router.push({ pathname: '/user/[id]', params: { id: authorId } })}
+          accessibilityRole="link"
+          accessibilityLabel={`${authorLabel}. Ver perfil`}
+          hitSlop={8}
+          style={({ pressed }) => [styles.row, local.meta, { flexShrink: 1 }, pressed && { opacity: 0.6 }]}
+        >
+          <Ionicons name="person-outline" size={16} color={colors.primary} />
+          <Text style={[local.metaText, { color: colors.primary }]} numberOfLines={1}>
+            {authorLabel}
+          </Text>
+        </Pressable>
+      ) : (
+        <View style={[styles.row, local.meta, { flexShrink: 1 }]}>
+          <Ionicons name="person-outline" size={16} color={colors.muted} />
+          <Text style={local.metaText} numberOfLines={1}>
+            {authorLabel}
+          </Text>
+        </View>
+      )}
       <View style={[styles.row, local.meta]}>
         <Ionicons name={v.icon} size={16} color={v.color} />
         <Text style={[local.metaText, { color: v.color }]}>{v.label}</Text>

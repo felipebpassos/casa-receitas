@@ -3,6 +3,7 @@ import { toast } from '@/components/Toast';
 import { fetchRemoteCatalog, GLOBAL_CATALOG, loadCachedCatalog, suggestIngredient as sendSuggestion } from '@/lib/catalog';
 import { UserFacingError } from '@/lib/errors';
 import { newId, nowIso } from '@/lib/ids';
+import { fetchIsAdmin } from '@/lib/publicLibrary';
 import { localRepo } from '@/lib/repo/localRepo';
 import { dependencyOrder, migrateLocalToRemote } from '@/lib/repo/migrate';
 import { RemoteRepo } from '@/lib/repo/remoteRepo';
@@ -31,6 +32,8 @@ type DataState = {
   reloading: boolean;
   reload: () => void;
   isGuest: boolean;
+  /** Administrador: o que publica já aparece na busca do Explorar. */
+  isAdmin: boolean;
 
   /** Catálogo global de ingredientes (o único permitido nas receitas). */
   catalog: Ingredient[];
@@ -70,6 +73,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<unknown>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  // Papel de admin: lido do perfil; na falha, segue como usuário comum (o servidor é quem garante).
+  const [adminOf, setAdminOf] = useState<string | null>(null);
+  const isAdmin = !!userId && adminOf === userId;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    fetchIsAdmin(userId).then((v) => !cancelled && setAdminOf(v ? userId : null));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   // Catálogo: o do cache na hora; o atualizado do servidor quando chegar (offline, fica o do cache).
   useEffect(() => {
@@ -162,14 +176,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const saveRecipe = useCallback(
     async (recipe: Recipe) => {
-      const submitted = !!userId && (recipe.status === 'PENDING' || recipe.status === 'APPROVED');
+      // Sem login nada é público. Aparecer na busca (listed) é decidido pelo servidor:
+      // admin publica já listada; privada nunca fica listada.
+      const isPublic = !!userId && !recipe.originRecipeId && recipe.visibility === 'PUBLIC';
       const toSave: Recipe = {
         ...recipe,
-        // Enviar (ou alterar uma receita aprovada) sempre volta para análise.
-        status: submitted ? 'PENDING' : 'PRIVATE',
-        rejectionReason: submitted ? null : recipe.rejectionReason,
+        visibility: isPublic ? 'PUBLIC' : 'PRIVATE',
+        listed: isPublic && (isAdmin || recipe.listed),
         updatedAt: nowIso(),
       };
+      const submitted = isPublic;
       const ok = await run(
         (s) => {
           const exists = s.recipes.some((r) => r.id === toSave.id);
@@ -177,11 +193,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
         },
         () => repo.saveRecipe(toSave),
       );
-      // Ao enviar, o servidor também envia as subreceitas: recarrega para refletir.
+      // Ao publicar, o servidor também publica os preparos usados: recarrega para refletir.
       if (ok && submitted && toSave.items.some((i) => i.subRecipeId)) repo.loadAll().then(setSnap, () => undefined);
       return ok;
     },
-    [repo, run, userId],
+    [repo, run, userId, isAdmin],
   );
 
   const deleteRecipe = useCallback(
@@ -226,8 +242,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
               id: recipeMap.get(r.id)!,
               // O que é usado dentro da receita entra no caderno como preparo.
               kind: r.id === tree.root.id ? r.kind : 'PREP',
-              status: 'PRIVATE',
-              rejectionReason: null,
+              visibility: 'PRIVATE',
+              listed: false,
               originRecipeId: r.id,
               originAuthorName: tree.authorName,
               createdAt: now,
@@ -281,6 +297,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setReloadTick((t) => t + 1);
     },
     isGuest: !userId,
+    isAdmin,
     catalog,
     getIngredient,
     ingredientName,

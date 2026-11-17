@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { NewRecipeDialog } from '@/components/NewRecipeDialog';
-import { KIND, KindIcon } from '@/components/RecipeKind';
+import { RecipeListItem } from '@/components/RecipeListItem';
+import { KIND } from '@/components/RecipeKind';
 import { colors, radius, spacing } from '@/components/theme';
 import { Chip, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
@@ -161,54 +162,6 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
   );
 }
 
-/** Card de receita/preparo das listas. `author` nulo = sua ("Minha"). */
-function RecipeListItem({
-  id,
-  kind,
-  name,
-  itemCount,
-  author,
-}: {
-  id: string;
-  kind: RecipeKind;
-  name: string;
-  itemCount: number;
-  author: string | null;
-}) {
-  return (
-    <Pressable
-      onPress={() => router.push({ pathname: '/recipe/[id]', params: { id } })}
-      accessibilityRole="link"
-      accessibilityLabel={`${KIND[kind].label}: ${name}${author ? `, por ${author}` : ''}`}
-      style={({ pressed }) => [styles.card, styles.row, { gap: spacing.md }, pressed && { backgroundColor: colors.primaryLight }]}
-    >
-      <KindIcon kind={kind} />
-      <View style={{ flex: 1, gap: spacing.xs }}>
-        {/* Título com a linha toda para ele (até 2 linhas). O status fica só na tela da receita. */}
-        <Text style={[styles.subtitle, { fontSize: 16, lineHeight: 21 }]} numberOfLines={2}>
-          {name}
-        </Text>
-        <View style={[styles.row, { gap: spacing.md }]}>
-          <Meta icon="cart-outline" text={`${itemCount} ingrediente${itemCount === 1 ? '' : 's'}`} />
-          <Meta icon="person-outline" text={author ? `por ${author}` : 'Minha'} shrink />
-        </View>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-    </Pressable>
-  );
-}
-
-function Meta({ icon, text, shrink }: { icon: ComponentProps<typeof Ionicons>['name']; text: string; shrink?: boolean }) {
-  return (
-    <View style={[styles.row, { gap: 4 }, shrink && { flexShrink: 1 }]}>
-      <Ionicons name={icon} size={14} color={colors.muted} />
-      <Text style={[styles.muted, shrink && { flexShrink: 1 }]} numberOfLines={1}>
-        {text}
-      </Text>
-    </View>
-  );
-}
-
 /** Biblioteca pública (receitas de outras pessoas). */
 function ExploreList({ query }: { query: string }) {
   const { userId } = useAuth();
@@ -297,7 +250,7 @@ function ExploreList({ query }: { query: string }) {
           <EmptyState
             icon="globe-outline"
             title={query ? 'Nenhuma receita encontrada' : 'Nenhuma receita publicada ainda'}
-            subtitle={query ? undefined : 'Publique as suas e seja a primeira pessoa a compartilhar!'}
+            subtitle={query ? undefined : 'Em breve, novas receitas por aqui.'}
           />
         )
       }

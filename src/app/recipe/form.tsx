@@ -64,7 +64,7 @@ function RecipeForm() {
   const [initialPreparation] = useState(() => sanitizeRichText(existing?.preparation));
   const [preparation, setPreparation] = useState(initialPreparation);
   const [source, setSource] = useState(existing?.sourceUrl ?? '');
-  const [submit, setSubmit] = useState(existing?.status === 'PENDING' || existing?.status === 'APPROVED');
+  const [isPublic, setIsPublic] = useState(existing?.visibility === 'PUBLIC');
   const [rows, setRows] = useState<Row[]>(() =>
     toRows(existing, (i) => (i.ingredientId ? data.ingredientName(i.ingredientId) : data.getRecipe(i.subRecipeId!)?.name ?? 'Receita')),
   );
@@ -119,8 +119,8 @@ function RecipeForm() {
       preparation: v.preparation || null,
       sourceUrl: parsedSource?.url ?? null,
       sourcePlatform: parsedSource?.platform ?? null,
-      status: submit && !isCopy && !data.isGuest ? 'PENDING' : 'PRIVATE',
-      rejectionReason: existing?.rejectionReason ?? null,
+      visibility: isPublic && !isCopy && !data.isGuest ? 'PUBLIC' : 'PRIVATE',
+      listed: existing?.listed ?? false,
       originRecipeId: existing?.originRecipeId ?? null,
       originAuthorName: existing?.originAuthorName ?? null,
       createdAt: existing?.createdAt ?? now,
@@ -141,17 +141,10 @@ function RecipeForm() {
     const ok = await data.saveRecipe(recipe);
     setSaving(false);
     if (!ok) return;
+    const published = recipe.visibility === 'PUBLIC' && existing?.visibility !== 'PUBLIC';
     toast.success(
-      recipe.status === 'PENDING'
-        ? 'Enviado para aprovação'
-        : isEdit
-          ? 'Alterações salvas'
-          : isPrep
-            ? 'Preparo cadastrado'
-            : 'Receita cadastrada',
-      recipe.status === 'PENDING'
-        ? `Você já pode usar ${isPrep ? 'o preparo' : 'a receita'} na sua semana. A publicação acontece depois da aprovação.`
-        : undefined,
+      published ? `${isPrep ? 'Preparo publicado' : 'Receita publicada'}` : isEdit ? 'Alterações salvas' : isPrep ? 'Preparo cadastrado' : 'Receita cadastrada',
+      published ? `Agora ${isPrep ? 'ele aparece' : 'ela aparece'} no seu perfil para quem visitar.` : undefined,
     );
     if (isEdit) router.back();
     else router.replace({ pathname: '/recipe/[id]', params: { id: recipe.id } });
@@ -266,7 +259,7 @@ function RecipeForm() {
           />
         </Field>
 
-        <SubmitSwitch kind={kind} isGuest={data.isGuest} isCopy={isCopy} existing={existing} value={submit} onChange={setSubmit} />
+        <VisibilitySwitch kind={kind} isGuest={data.isGuest} isAdmin={data.isAdmin} isCopy={isCopy} value={isPublic} onChange={setIsPublic} />
       </ScrollView>
 
       <BottomBar>
@@ -302,18 +295,18 @@ function unitOptions(allowed: string[] | null | undefined): readonly string[] {
   return allowed.includes(NO_QUANTITY_UNIT) ? allowed : [...allowed, NO_QUANTITY_UNIT];
 }
 
-function SubmitSwitch({
+function VisibilitySwitch({
   kind,
   isGuest,
+  isAdmin,
   isCopy,
-  existing,
   value,
   onChange,
 }: {
   kind: RecipeKind;
   isGuest: boolean;
+  isAdmin: boolean;
   isCopy: boolean;
-  existing: Recipe | undefined;
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
@@ -329,25 +322,13 @@ function SubmitSwitch({
       </Pressable>
     );
   }
-  const wasApproved = existing?.status === 'APPROVED';
   const prep = kind === 'PREP';
   const hint = !value
-    ? wasApproved
-      ? 'Ao salvar, deixa de ser publicado e fica visível apenas para você.'
-      : 'Visível apenas para você.'
-    : wasApproved
-      ? 'Já está publicado. Ao salvar alterações, volta para análise.'
-      : `Depois da aprovação pela moderação, fica visível para outras pessoas em Explorar${prep ? '.' : ' (os preparos usados também).'}`;
+    ? 'Visível apenas para você.'
+    : `Qualquer pessoa pode ver no seu perfil${prep ? '' : ' (os preparos usados também)'}${isAdmin ? ' e na busca do Explorar' : ''}.`;
   const title = `Publicar ${KIND[kind].label.toLowerCase()}`;
   return (
     <View style={{ gap: spacing.sm }}>
-      {existing?.status === 'REJECTED' && (
-        <View style={[styles.card, { borderColor: colors.danger, backgroundColor: colors.dangerLight, gap: spacing.xs }]}>
-          <Text style={[styles.subtitle, { color: colors.danger }]}>Não aprovado para publicação</Text>
-          <Text style={styles.body}>{existing.rejectionReason || 'Sem motivo informado.'}</Text>
-          <Text style={styles.muted}>Ajuste e envie de novo, se quiser.</Text>
-        </View>
-      )}
       <Pressable
         onPress={() => onChange(!value)}
         accessibilityRole="switch"

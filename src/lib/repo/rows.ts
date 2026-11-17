@@ -1,9 +1,9 @@
 // Conversão entre as linhas do banco (snake_case) e os tipos do app.
-import type { Recipe, RecipeItem, RecipeKind, RecipeStatus } from '../types';
+import type { Recipe, RecipeItem, RecipeKind, RecipeVisibility } from '../types';
 
 // recipe_items tem duas FKs para recipes (dona e subreceita): o embed precisa nomear a FK da dona.
 export const RECIPE_SELECT =
-  'id, user_id, kind, name, description, preparation, source_url, source_platform, status, rejection_reason, origin_recipe_id, origin_author_name, created_at, updated_at, recipe_items:recipe_items!recipe_items_recipe_id_fkey(id, position, ingredient_id, sub_recipe_id, quantity, unit)';
+  'id, user_id, kind, name, description, preparation, source_url, source_platform, visibility, listed, origin_recipe_id, origin_author_name, created_at, updated_at, recipe_items:recipe_items!recipe_items_recipe_id_fkey(id, position, ingredient_id, sub_recipe_id, quantity, unit)';
 
 export type RecipeRow = {
   id: string;
@@ -14,8 +14,8 @@ export type RecipeRow = {
   preparation: string | null;
   source_url: string | null;
   source_platform: string | null;
-  status: RecipeStatus;
-  rejection_reason: string | null;
+  visibility: RecipeVisibility;
+  listed: boolean;
   origin_recipe_id: string | null;
   origin_author_name: string | null;
   created_at: string;
@@ -39,8 +39,8 @@ export function recipeFromRow(row: RecipeRow): Recipe {
     preparation: row.preparation,
     sourceUrl: row.source_url,
     sourcePlatform: row.source_platform,
-    status: row.status,
-    rejectionReason: row.rejection_reason,
+    visibility: row.visibility === 'PUBLIC' ? 'PUBLIC' : 'PRIVATE',
+    listed: !!row.listed,
     originRecipeId: row.origin_recipe_id,
     originAuthorName: row.origin_author_name,
     createdAt: row.created_at,
@@ -70,9 +70,8 @@ export function recipeToPayload(r: Recipe) {
     preparation: r.preparation,
     source_url: r.sourceUrl,
     source_platform: r.sourcePlatform,
-    // O servidor decide o status: PENDING ao enviar para a biblioteca, PRIVATE caso contrário.
-    // Alterar uma receita aprovada a reenvia para análise.
-    submit: r.status === 'PENDING' || r.status === 'APPROVED',
+    // Aparecer na busca (listed) é decidido pelo servidor.
+    visibility: r.visibility,
     origin_recipe_id: r.originRecipeId,
     origin_author_name: r.originAuthorName,
     created_at: r.createdAt,

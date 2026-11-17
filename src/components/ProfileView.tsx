@@ -18,7 +18,7 @@ export function userDisplayName(meta: Record<string, unknown> | undefined, email
   return pick('display_name') ?? pick('full_name') ?? pick('name') ?? email?.split('@')[0] ?? 'Você';
 }
 
-function initials(name: string) {
+export function initials(name: string) {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
 }
@@ -38,12 +38,12 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
   const stats = useMemo(
     () => ({
       total: recipes.length,
-      published: recipes.filter((r) => r.status === 'APPROVED').length,
-      pending: recipes.filter((r) => r.status === 'PENDING').length,
-      rejected: recipes.filter((r) => r.status === 'REJECTED').length,
+      published: recipes.filter((r) => r.visibility === 'PUBLIC' && !r.originRecipeId).length,
     }),
     [recipes],
   );
+
+  const openPublicProfile = () => user && router.push({ pathname: '/user/[id]', params: { id: user.id } });
 
   const askSignOut = () =>
     confirm({
@@ -83,31 +83,15 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       {/* Números */}
       <View style={s.stats}>
         <Stat icon="book-outline" value={stats.total} label={stats.total === 1 ? 'receita' : 'receitas'} onPress={() => router.navigate('/')} />
-        <Stat icon="globe-outline" value={stats.published} label={stats.published === 1 ? 'publicada' : 'publicadas'}
-          onPress={() => router.navigate({ pathname: '/', params: { tab: 'explore' } })}
-        />
+        <Stat icon="globe-outline" value={stats.published} label={stats.published === 1 ? 'publicada' : 'publicadas'} onPress={openPublicProfile} />
       </View>
-
-      {/* Moderação: só aparece quando há algo acontecendo */}
-      {(stats.pending > 0 || stats.rejected > 0) && (
-        <View style={[ui.card, s.notice]}>
-          <Ionicons name="hourglass-outline" size={20} color={colors.warning} />
-          <Text style={[ui.body, { flex: 1 }]}>
-            {[
-              stats.pending > 0 && `${stats.pending} ${stats.pending === 1 ? 'receita em análise' : 'receitas em análise'}`,
-              stats.rejected > 0 && `${stats.rejected} ${stats.rejected === 1 ? 'recusada' : 'recusadas'}`,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </Text>
-        </View>
-      )}
 
       {/* Atalhos */}
       <View>
         <Text style={[ui.label, s.sectionLabel]}>Atalhos</Text>
         <View style={s.menu}>
           <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.push('/recipe/form')} />
+          <MenuRow icon="person-circle-outline" title="Meu perfil público" subtitle="O que outras pessoas veem de você" onPress={openPublicProfile} />
           <MenuRow icon="book-outline" title="Meu caderno" subtitle="Suas receitas e as que você salvou" onPress={() => router.navigate('/')} />
           <MenuRow icon="compass-outline" title="Explorar receitas" subtitle="Veja o que outras pessoas publicaram" onPress={() => router.navigate({ pathname: '/', params: { tab: 'explore' } })} />
           <MenuRow icon="cart-outline" title="Semana e lista de compras" subtitle="Planeje as refeições" onPress={() => router.navigate('/semana')} last />

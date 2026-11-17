@@ -66,6 +66,7 @@ function Gate() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="recipe/[id]" options={{ title: 'Receita' }} />
       <Stack.Screen name="recipe/form" options={{ title: 'Receita', presentation: 'modal' }} />
+      <Stack.Screen name="user/[id]" options={{ title: 'Perfil' }} />
       <Stack.Screen name="account" options={{ title: 'Conta', presentation: 'modal' }} />
       <Stack.Screen name="auth-callback" options={{ headerShown: false, animation: 'none' }} />
       </Stack>

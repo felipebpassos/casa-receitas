@@ -9,8 +9,8 @@ const KEY = 'receitas-de-casa:data:v1';
 /** Formato antigo (com Despensa, lista de compras salva, ingredientes personalizados, isPublic e sem tipo Receita/Preparo). */
 type LegacyData = Omit<Partial<Snapshot>, 'recipes'> & {
   customIngredients?: { id: string; name: string }[];
-  recipes?: (Omit<Recipe, 'status' | 'rejectionReason' | 'kind'> &
-    Partial<Pick<Recipe, 'status' | 'rejectionReason' | 'kind'>> & { isPublic?: boolean })[];
+  recipes?: (Omit<Recipe, 'visibility' | 'listed' | 'kind'> &
+    Partial<Pick<Recipe, 'visibility' | 'listed' | 'kind'>> & { isPublic?: boolean; status?: string; rejectionReason?: string | null })[];
 };
 
 /**
@@ -22,12 +22,12 @@ function normalize(raw: LegacyData): Snapshot {
   const customMap = new Map((raw.customIngredients ?? []).map((i) => [i.id, catalogByName.get(normalizeName(i.name)) ?? null]));
 
   const rawRecipes = raw.recipes ?? [];
-  const recipes: Recipe[] = rawRecipes.map(({ isPublic: _legacy, ...r }) => ({
+  const recipes: Recipe[] = rawRecipes.map(({ isPublic: _legacy, status: _status, rejectionReason: _reason, ...r }) => ({
     ...r,
     kind: r.kind ?? inferKind(r, rawRecipes),
-    // Sem login nada vai para a biblioteca.
-    status: 'PRIVATE',
-    rejectionReason: null,
+    // Sem login nada é público.
+    visibility: 'PRIVATE',
+    listed: false,
     items: r.items.flatMap((i) => {
       if (!i.ingredientId || !customMap.has(i.ingredientId)) return [i];
       const id = customMap.get(i.ingredientId);

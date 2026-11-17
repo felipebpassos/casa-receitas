@@ -1,6 +1,6 @@
 // Teste de fumaça do backend local: SQL, RPCs e RLS.
 // Testa SQL, funções e RLS contra o Supabase do .env (use o local!). Cria usuários de teste.
-// A moderação usa a chave service_role: SUPABASE_SERVICE_ROLE_KEY (env/.env) ou `supabase status`.
+// O painel (destaque, admins, fila de edições) usa a chave service_role: SUPABASE_SERVICE_ROLE_KEY (env/.env) ou `supabase status`.
 // Uso: npm run test:db
 import { createRequire } from 'node:module';
 import { randomUUID } from 'node:crypto';
@@ -42,16 +42,17 @@ async function user(name) {
 
 const recipe = (fields, items) => ({
   id: randomUUID(), description: null, preparation: null, source_url: null, source_platform: null,
-  submit: false, origin_recipe_id: null, origin_author_name: null, created_at: new Date().toISOString(),
+  visibility: 'PRIVATE', origin_recipe_id: null, origin_author_name: null, created_at: new Date().toISOString(),
   ...fields,
   items: items.map((i) => ({ id: randomUUID(), quantity: null, unit: null, ingredient_id: null, sub_recipe_id: null, ...i })),
 });
-const statusOf = async (c, id) => (await c.from('recipes').select('status').eq('id', id).single()).data?.status;
+const visOf = async (c, id) => (await c.from('recipes').select('visibility').eq('id', id).single()).data?.visibility;
 
 const anon = client();
 const admin = client(serviceKey());
 const A = await user('Ana');
 const B = await user('Beto');
+const listedOf = async (id) => (await admin.from('recipes').select('listed').eq('id', id).maybeSingle()).data?.listed === true;
 
 // ------------------------------------------------------------ catálogo
 const cat = await anon.from('ingredients').select('id');
@@ -75,13 +76,13 @@ ok(sugB.data?.length === 0, 'Beto não vê as sugestões da Ana', sugB.data);
 const sugApproved = await A.c.from('ingredient_suggestions').insert({ name: 'Zaatar', status: 'APPROVED' });
 ok(!!sugApproved.error, 'usuário não cria sugestão já aprovada', sugApproved.error?.code);
 
-// ------------------------------------------------------------ receitas e moderação
+// ------------------------------------------------------------ receitas, visibilidade e destaque
 const molho = recipe({ name: 'Molho bolonhesa', kind: 'PREP' }, [
   { ingredient_id: gid('Carne moída'), quantity: 500, unit: 'g' },
   { ingredient_id: gid('Tomate'), quantity: 4, unit: 'unidade' },
 ]);
 ok(!(await A.c.rpc('save_recipe', { p: molho })).error, 'Ana salva o molho (preparo, privado)');
-ok((await statusOf(A.c, molho.id)) === 'PRIVATE', 'receita nova é PRIVATE');
+ok((await visOf(A.c, molho.id)) === 'PRIVATE', 'receita nova é PRIVATE');
 
 // Receita x Preparo
 const kindOf = async (id) => (await A.c.from('recipes').select('kind').eq('id', id).single()).data?.kind;
@@ -96,67 +97,124 @@ ok(!!usesRecipe.error, 'receita não pode ser ingrediente (só preparo)', usesRe
 const prepInPrep = await A.c.rpc('save_recipe', { p: recipe({ name: 'Preparo com preparo', kind: 'PREP' }, [{ sub_recipe_id: molho.id }]) });
 ok(!!prepInPrep.error, 'preparo não usa outro preparo', prepInPrep.error?.message);
 
-const lasanha = recipe({ name: 'Lasanha', submit: true, source_url: 'https://youtu.be/x', source_platform: 'youtube' }, [
+const lasanha = recipe({ name: 'Lasanha', visibility: 'PUBLIC', source_url: 'https://youtu.be/x', source_platform: 'youtube' }, [
   { ingredient_id: gid('Massa de lasanha'), quantity: 1, unit: 'pacote' },
   { ingredient_id: gid('Mussarela'), quantity: 300, unit: 'g' },
   { sub_recipe_id: molho.id },
 ]);
 const saveLas = await A.c.rpc('save_recipe', { p: lasanha });
-ok(!saveLas.error, 'Ana envia a lasanha (com subreceita) para a biblioteca', saveLas.error);
-ok((await statusOf(A.c, lasanha.id)) === 'PENDING', 'enviada fica PENDING');
-ok((await statusOf(A.c, molho.id)) === 'PENDING', 'a subreceita vai para análise junto');
+ok(!saveLas.error, 'Ana publica a lasanha (com preparo)', saveLas.error);
+ok((await visOf(A.c, lasanha.id)) === 'PUBLIC' && !(await listedOf(lasanha.id)), 'publicada fica PUBLIC, fora da busca');
+ok((await visOf(A.c, molho.id)) === 'PUBLIC', 'o preparo usado fica público junto');
 
 const s0 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
-ok(!s0.error && !s0.data?.some((r) => r.id === lasanha.id), 'receita em análise não aparece na biblioteca', s0.error ?? s0.data);
-const pend = await B.c.from('recipes').select('id').eq('id', lasanha.id);
-ok(pend.data?.length === 0, 'Beto não vê receita em análise da Ana', pend.data);
+ok(!s0.error && !s0.data?.some((r) => r.id === lasanha.id), 'receita pública não listada não aparece na busca', s0.error ?? s0.data);
+const seen = await B.c.from('recipes').select('id').eq('id', lasanha.id);
+ok(seen.data?.length === 1, 'Beto abre a receita pública da Ana', seen.data);
+const prof0 = await anon.rpc('list_user_public_recipes', { p_user: A.id });
+ok(
+  prof0.data?.some((r) => r.id === lasanha.id) && prof0.data?.some((r) => r.id === molho.id) && !prof0.data?.some((r) => r.id === prato.id),
+  'perfil público da Ana lista as públicas (não as privadas)',
+  prof0.error ?? prof0.data?.map((r) => r.name),
+);
 
-const selfApprove = await A.c.from('recipes').update({ status: 'APPROVED' }).eq('id', lasanha.id);
-ok(/moderação/.test(selfApprove.error?.message ?? ''), 'Ana não aprova a própria receita (update direto)', selfApprove.error);
-const selfInsert = await A.c.from('recipes').insert({ id: randomUUID(), name: 'Já aprovada', status: 'APPROVED' });
-ok(!!selfInsert.error, 'Ana não cria receita já aprovada', selfInsert.error?.message);
-const rpcApprove = await A.c.rpc('save_recipe', { p: { ...lasanha, status: 'APPROVED' } });
-ok(!rpcApprove.error && (await statusOf(A.c, lasanha.id)) === 'PENDING', 'save_recipe ignora status enviado pelo cliente');
+const selfList = await A.c.from('recipes').update({ listed: true }).eq('id', lasanha.id);
+ok(!selfList.error && !(await listedOf(lasanha.id)), 'Ana não se coloca na busca (update direto ignorado)', selfList.error);
+const selfInsertId = randomUUID();
+await A.c.from('recipes').insert({ id: selfInsertId, name: 'Já listada', visibility: 'PUBLIC', listed: true });
+ok(!(await listedOf(selfInsertId)), 'Ana não cria receita já listada');
+const rpcList = await A.c.rpc('save_recipe', { p: { ...lasanha, listed: true } });
+ok(!rpcList.error && !(await listedOf(lasanha.id)), 'save_recipe ignora listed enviado pelo cliente');
+const selfAdmin = await A.c.from('profiles').update({ is_admin: true }).eq('id', A.id);
+const stillUser = await admin.from('profiles').select('is_admin').eq('id', A.id).single();
+ok(!!selfAdmin.error && stillUser.data?.is_admin === false, 'Ana não se torna admin', selfAdmin.error ?? stillUser.data);
+ok(!(await A.c.from('profiles').update({ display_name: 'Ana' }).eq('id', A.id)).error, 'Ana ainda muda o próprio nome');
 
-const priv = await A.c.rpc('save_recipe', { p: { ...molho, submit: false } });
-ok(!!priv.error, 'não deixa tornar privado um preparo usado por receita enviada', priv.error?.message);
+const priv = await A.c.rpc('save_recipe', { p: { ...molho, visibility: 'PRIVATE' } });
+ok(!!priv.error, 'não deixa tornar privado um preparo usado por receita pública', priv.error?.message);
 
-// Moderação (painel = service_role)
-const approve = await admin.from('recipes').update({ status: 'APPROVED' }).eq('id', lasanha.id);
-ok(!approve.error, 'moderação aprova a lasanha', approve.error);
-ok((await statusOf(A.c, molho.id)) === 'APPROVED', 'aprovar a lasanha aprova também o molho (subreceita)');
-const reviewed = await admin.from('recipes').select('reviewed_at').eq('id', lasanha.id).single();
-ok(!!reviewed.data?.reviewed_at, 'reviewed_at é preenchido na aprovação', reviewed.data);
+// Destaque pelo painel (service_role)
+const list = await admin.from('recipes').update({ listed: true }).eq('id', lasanha.id);
+ok(!list.error && (await listedOf(lasanha.id)), 'painel coloca a lasanha na busca', list.error);
+ok(await listedOf(molho.id), 'listar a lasanha lista também o molho (preparo)');
 
 const s1 = await anon.rpc('search_public_recipes', { q: 'carne' });
 ok(s1.data?.some((r) => r.name === 'Molho bolonhesa'), 'busca por ingrediente acha o molho (carne)', s1.data?.map((r) => r.name));
 const s2 = await anon.rpc('search_public_recipes', { q: 'MOLHO' });
-ok(s2.data?.some((r) => r.name === 'Lasanha'), 'busca pelo nome da subreceita acha a lasanha', s2.data?.map((r) => r.name));
+ok(s2.data?.some((r) => r.name === 'Lasanha'), 'busca pelo nome do preparo acha a lasanha', s2.data?.map((r) => r.name));
 const s3 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
 ok(s3.data?.[0]?.author_name === 'Ana' && Number(s3.data?.[0]?.item_count) === 3, 'resultado traz autor e nº de itens', s3.data);
 ok(s3.data?.[0]?.kind === 'RECIPE' && s1.data?.find((r) => r.name === 'Molho bolonhesa')?.kind === 'PREP', 'resultado traz o tipo', s3.data);
 const items = await anon.from('recipe_items').select('ingredient_id').eq('recipe_id', molho.id);
-ok(items.data?.length === 2, 'visitante lê os itens da subreceita aprovada', items);
+ok(items.data?.length === 2, 'visitante lê os itens do preparo público', items);
 
-// Alterar receita aprovada volta para análise
-const directItem = await A.c.from('recipe_items').insert({ recipe_id: lasanha.id, ingredient_id: gid('Sal'), quantity: 1, unit: 'g' });
-ok(!!directItem.error, 'itens de receita aprovada não mudam direto', directItem.error?.code);
+// Edição de receita listada: os outros veem a versão aprovada até o admin aprovar
+const pendingOf = async (id) => (await admin.from('recipe_pending_edits').select('snapshot').eq('recipe_id', id).maybeSingle()).data?.snapshot;
+ok(!(await A.c.rpc('save_recipe', { p: { ...lasanha, name: 'Lasanha da Ana' } })).error, 'Ana edita a lasanha listada');
+ok((await A.c.from('recipes').select('name').eq('id', lasanha.id).single()).data?.name === 'Lasanha da Ana', 'Ana vê a versão editada');
+ok((await pendingOf(lasanha.id))?.name === 'Lasanha', 'a versão aprovada fica guardada na fila');
+ok(await listedOf(lasanha.id), 'continua na busca enquanto a edição aguarda');
+const s4 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
+ok(s4.data?.find((r) => r.id === lasanha.id)?.name === 'Lasanha', 'a busca mostra a versão aprovada', s4.data);
+const snapAnon = await anon.from('recipe_pending_edits').select('snapshot').eq('recipe_id', lasanha.id).maybeSingle();
+ok(snapAnon.data?.snapshot?.recipe_items?.length === 3, 'visitante lê o snapshot (com itens) para abrir a receita', snapAnon.error ?? snapAnon.data);
+await A.c.rpc('save_recipe', { p: { ...lasanha, name: 'Lasanha da Ana', preparation: 'Monte em camadas.' } });
+ok((await pendingOf(lasanha.id))?.name === 'Lasanha', 'várias edições mantêm o primeiro snapshot (o aprovado)');
+await A.c.rpc('save_recipe', { p: lasanha });
+ok(!(await pendingOf(lasanha.id)), 'desfazer a edição (igual à aprovada) tira da fila');
+const forge = await A.c.from('recipe_pending_edits').insert({ recipe_id: lasanha.id, snapshot: { name: 'Falsa' } });
+ok(!!forge.error, 'Ana não escreve snapshot direto', forge.error?.code);
+
+await A.c.rpc('save_recipe', { p: { ...lasanha, name: 'Lasanha da Ana' } });
+ok(!(await admin.rpc('approve_recipe_edit', { p_recipe: lasanha.id })).error && !(await pendingOf(lasanha.id)), 'painel aprova a edição');
+const s5 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
+ok(s5.data?.find((r) => r.id === lasanha.id)?.name === 'Lasanha da Ana', 'depois de aprovada, a busca mostra a edição', s5.data);
+const userApprove = await A.c.rpc('approve_recipe_edit', { p_recipe: lasanha.id });
+ok(!!userApprove.error, 'usuário não chama approve_recipe_edit', userApprove.error?.code);
+
 await A.c.from('recipes').update({ description: 'nova' }).eq('id', lasanha.id);
-ok((await statusOf(A.c, lasanha.id)) === 'PENDING', 'editar receita aprovada (update direto) a devolve para PENDING');
-await admin.from('recipes').update({ status: 'APPROVED' }).eq('id', lasanha.id);
-ok(!(await A.c.rpc('save_recipe', { p: { ...lasanha, name: 'Lasanha da Ana' } })).error, 'Ana edita a lasanha aprovada via save_recipe');
-ok((await statusOf(A.c, lasanha.id)) === 'PENDING', 'editar receita aprovada via save_recipe a devolve para PENDING');
+ok(!!(await pendingOf(lasanha.id)), 'update direto numa receita listada também entra na fila');
+ok(!(await admin.rpc('reject_recipe_edit', { p_recipe: lasanha.id })).error, 'painel recusa a edição');
+ok(
+  !(await listedOf(lasanha.id)) && !(await pendingOf(lasanha.id)) && (await visOf(A.c, lasanha.id)) === 'PUBLIC',
+  'recusar tira da busca, limpa a fila e mantém pública no perfil',
+);
+await admin.from('recipes').update({ listed: true }).eq('id', lasanha.id);
+await A.c.from('recipe_items').insert({ recipe_id: lasanha.id, ingredient_id: gid('Sal'), quantity: 1, unit: 'g', position: 9 });
+ok(!!(await pendingOf(lasanha.id)), 'mexer direto nos itens de receita listada entra na fila');
+await A.c.rpc('save_recipe', { p: { ...lasanha, name: 'Lasanha da Ana' } });
+await admin.rpc('approve_recipe_edit', { p_recipe: lasanha.id });
 
-// Recusa com motivo
-await admin.from('recipes').update({ status: 'REJECTED', rejection_reason: 'Faltou o modo de preparo.' }).eq('id', lasanha.id);
-const rej = await A.c.from('recipes').select('status, rejection_reason').eq('id', lasanha.id).single();
-ok(rej.data?.status === 'REJECTED' && rej.data?.rejection_reason === 'Faltou o modo de preparo.', 'Ana vê a recusa e o motivo', rej.data);
-const resend = await A.c.rpc('save_recipe', { p: { ...lasanha, preparation: 'Monte em camadas.' } });
-const resent = await A.c.from('recipes').select('status, rejection_reason').eq('id', lasanha.id).single();
-ok(!resend.error && resent.data?.status === 'PENDING' && resent.data?.rejection_reason === null, 'reenviar limpa o motivo e volta para PENDING', resent.data);
-await admin.from('recipes').update({ status: 'APPROVED' }).eq('id', lasanha.id);
+const bolo = recipe({ name: 'Bolo listado', visibility: 'PUBLIC' }, [{ ingredient_id: gid('Sal'), quantity: 1, unit: 'g' }]);
+await A.c.rpc('save_recipe', { p: bolo });
+await admin.from('recipes').update({ listed: true }).eq('id', bolo.id);
+await A.c.rpc('save_recipe', { p: { ...bolo, name: 'Bolo editado' } });
+const delListed = await A.c.from('recipes').delete().eq('id', bolo.id);
+ok(!delListed.error && !(await pendingOf(bolo.id)), 'excluir receita listada com edição pendente funciona', delListed.error);
+const bolo2 = recipe({ name: 'Bolo 2', visibility: 'PUBLIC' }, [{ ingredient_id: gid('Sal'), quantity: 1, unit: 'g' }]);
+await A.c.rpc('save_recipe', { p: bolo2 });
+await admin.from('recipes').update({ listed: true }).eq('id', bolo2.id);
+await A.c.rpc('save_recipe', { p: { ...bolo2, name: 'Bolo 2 editado' } });
+await A.c.rpc('save_recipe', { p: { ...bolo2, name: 'Bolo 2 editado', visibility: 'PRIVATE' } });
+ok(!(await listedOf(bolo2.id)) && !(await pendingOf(bolo2.id)), 'tornar privada tira da busca e limpa a fila');
+const { visibility: _v, ...bolo2Legacy } = bolo2;
+const compat = await A.c.rpc('save_recipe', { p: { ...bolo2Legacy, submit: true } });
+ok(!compat.error && (await visOf(A.c, bolo2.id)) === 'PUBLIC', 'apps antigos (submit: true) ainda publicam', compat.error);
 
-const self = await A.c.rpc('save_recipe', { p: { ...molho, submit: true, items: [{ id: randomUUID(), sub_recipe_id: molho.id, ingredient_id: null }] } });
+// Admin: o que publica já entra na busca; editar não passa pela fila
+const C = await user('Chef');
+await admin.from('profiles').update({ is_admin: true }).eq('id', C.id);
+const caldo = recipe({ name: 'Caldo de legumes', kind: 'PREP' }, [{ ingredient_id: gid('Tomate'), quantity: 2, unit: 'unidade' }]);
+const sopa = recipe({ name: 'Sopa do chef', visibility: 'PUBLIC' }, [{ ingredient_id: gid('Sal'), quantity: 1, unit: 'g' }, { sub_recipe_id: caldo.id }]);
+await C.c.rpc('save_recipe', { p: caldo });
+ok(!(await C.c.rpc('save_recipe', { p: sopa })).error, 'admin publica a sopa');
+ok((await listedOf(sopa.id)) && (await listedOf(caldo.id)), 'publicação de admin já entra na busca (com o preparo)');
+await C.c.rpc('save_recipe', { p: { ...sopa, name: 'Sopa do chef (nova)' } });
+ok(!(await pendingOf(sopa.id)), 'edição de admin não passa pela fila');
+await C.c.rpc('save_recipe', { p: { ...sopa, visibility: 'PRIVATE' } });
+ok(!(await listedOf(sopa.id)), 'admin deixando privada sai da busca');
+
+const self = await A.c.rpc('save_recipe', { p: { ...molho, visibility: 'PUBLIC', items: [{ id: randomUUID(), sub_recipe_id: molho.id, ingredient_id: null }] } });
 ok(!!self.error, 'receita não pode usar a si mesma como subreceita', self.error?.message);
 
 // ------------------------------------------------------------ privacidade
@@ -181,8 +239,8 @@ const lasCopy = recipe({ name: 'Lasanha', origin_recipe_id: lasanha.id, origin_a
   { sub_recipe_id: molhoCopy.id },
 ]);
 ok(!(await B.c.rpc('save_recipe', { p: molhoCopy })).error && !(await B.c.rpc('save_recipe', { p: lasCopy })).error, 'Beto salva cópias com subreceita');
-const pubCopy = await B.c.rpc('save_recipe', { p: { ...lasCopy, submit: true } });
-ok(!!pubCopy.error, 'cópia de receita de outra pessoa não pode ser enviada', pubCopy.error?.message);
+const pubCopy = await B.c.rpc('save_recipe', { p: { ...lasCopy, visibility: 'PUBLIC' } });
+ok(!!pubCopy.error, 'cópia de receita de outra pessoa não pode ser publicada', pubCopy.error?.message);
 const useOthers = await B.c.rpc('save_recipe', { p: recipe({ name: 'Usa molho da Ana' }, [{ sub_recipe_id: molho.id }]) });
 ok(!!useOthers.error, 'Beto não usa receita da Ana como subreceita (só a própria cópia)', useOthers.error?.message);
 
@@ -196,8 +254,8 @@ ok(del.error?.code === '23503', 'não exclui receita usada como subreceita', del
 // Carregamento como o app faz (RECIPE_SELECT)
 const RECIPE_SELECT = readFileSync(`${projectDir}/src/lib/repo/rows.ts`, 'utf8').match(/RECIPE_SELECT =\s*'([^']+)'/)[1];
 const load = await B.c.from('recipes').select(RECIPE_SELECT).eq('user_id', B.id);
-const pubTree = await anon.from('recipes').select(RECIPE_SELECT).eq('id', lasanha.id).eq('status', 'APPROVED').maybeSingle();
-ok(pubTree.data?.recipe_items?.length === 3, 'visitante carrega a receita aprovada com itens (como o app)', pubTree.error ?? pubTree.data);
+const pubTree = await anon.from('recipes').select(RECIPE_SELECT).eq('id', lasanha.id).eq('visibility', 'PUBLIC').maybeSingle();
+ok(pubTree.data?.recipe_items?.length === 3, 'visitante carrega a receita pública com itens (como o app)', pubTree.error ?? pubTree.data);
 ok(load.data?.length === 2 && load.data.every((r) => r.recipe_items.length > 0), 'Beto carrega a coleção com itens', load.error ?? load.data);
 
 console.log(failures ? `\n${failures} falha(s)` : '\nTudo certo!');

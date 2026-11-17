@@ -17,10 +17,10 @@ export type RecipeItem = {
 };
 
 /**
- * PRIVATE: só para você. PENDING: enviada para a biblioteca, aguardando moderação.
- * APPROVED: aparece na biblioteca. REJECTED: recusada (veja rejectionReason).
+ * PRIVATE: só para você. PUBLIC: qualquer pessoa vê no seu perfil.
+ * Aparecer na busca do Explorar é outra coisa (Recipe.listed), decidida pela equipe.
  */
-export type RecipeStatus = 'PRIVATE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+export type RecipeVisibility = 'PRIVATE' | 'PUBLIC';
 
 /**
  * RECIPE: prato completo (lasanha, pizza); pode usar preparos como ingrediente.
@@ -38,8 +38,9 @@ export type Recipe = {
   /** Link do vídeo/receita original (YouTube, Instagram, TikTok...). */
   sourceUrl: string | null;
   sourcePlatform: string | null;
-  status: RecipeStatus;
-  rejectionReason: string | null;
+  visibility: RecipeVisibility;
+  /** Aparece na busca do Explorar. Interno: não é mostrado ao usuário. */
+  listed: boolean;
   /** Preenchidos quando é uma cópia salva da receita pública de outra pessoa. */
   originRecipeId: string | null;
   originAuthorName: string | null;
