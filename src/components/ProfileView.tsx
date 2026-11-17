@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
-import { useMemo, useState, type ComponentProps } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useState, type ComponentProps } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { confirm } from '@/components/ConfirmDialog';
 import { colors, fonts, radius, spacing } from '@/components/theme';
@@ -10,6 +10,7 @@ import { Button, IconButton, styles as ui } from '@/components/ui';
 import { UsernameDialog } from '@/components/UsernameDialog';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
+import { getFollowStats, type FollowStats } from '@/lib/follows';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -31,15 +32,28 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
     ? new Date(user.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     : null;
 
-  const stats = useMemo(
-    () => ({
-      total: recipes.length,
-      published: recipes.filter((r) => r.visibility === 'PUBLIC' && !r.originRecipeId).length,
-    }),
-    [recipes],
+  const published = useMemo(() => recipes.filter((r) => r.visibility === 'PUBLIC' && !r.originRecipeId).length, [recipes]);
+
+  // Seguidores/seguindo: recarrega ao voltar para a tela (pode ter seguido alguém).
+  const [follows, setFollows] = useState<FollowStats | null>(null);
+  const userId = user?.id;
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      let cancelled = false;
+      getFollowStats(userId)
+        .then((st) => !cancelled && setFollows(st))
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [userId]),
   );
 
   const openPublicProfile = () => user && router.push({ pathname: '/user/[id]', params: { id: user.id } });
+  const openFollows = (tab: 'followers' | 'following') => router.push({ pathname: '/follows', params: { tab } });
+  const followers = follows?.followers ?? 0;
+  const following = follows?.following ?? 0;
 
   const askSignOut = () =>
     confirm({
@@ -81,8 +95,9 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
 
       {/* Números */}
       <View style={s.stats}>
-        <Stat icon="book-outline" value={stats.total} label={'salvas'} onPress={() => router.navigate('/')} />
-        <Stat icon="globe-outline" value={stats.published} label={stats.published === 1 ? 'publicada' : 'publicadas'} onPress={openPublicProfile} />
+        <Stat icon="globe-outline" value={published} label={published === 1 ? 'publicada' : 'publicadas'} onPress={openPublicProfile} />
+        <Stat icon="people-outline" value={followers} label={followers === 1 ? 'seguidor' : 'seguidores'} onPress={() => openFollows('followers')} />
+        <Stat icon="person-add-outline" value={following} label="seguindo" onPress={() => openFollows('following')} />
       </View>
 
       {/* Atalhos */}

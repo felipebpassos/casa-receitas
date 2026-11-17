@@ -312,6 +312,37 @@ ok(confirmed.data?.length === 1 && confirmed.data[0].id === G1.id, 'busca acha d
 const authorRow = (await anon.rpc('list_user_public_recipes', { p_user: A.id })).data?.[0];
 ok(!authorRow || authorRow.author_name === A.username, 'autor das receitas públicas é o usuário', authorRow);
 
+// ------------------------------------------------------------ seguir
+const statsOf = async (c, id) => (await c.rpc('follow_stats', { p_user: id })).data?.[0];
+ok(!(await B.c.from('follows').insert({ follower_id: B.id, followee_id: A.id })).error, 'Beto segue a Ana');
+ok(!(await C.c.from('follows').insert({ follower_id: C.id, followee_id: A.id })).error, 'Chef segue a Ana');
+ok(!(await A.c.from('follows').insert({ follower_id: A.id, followee_id: B.id })).error, 'Ana segue o Beto');
+ok((await B.c.from('follows').insert({ follower_id: B.id, followee_id: A.id })).error?.code === '23505', 'seguir de novo não duplica');
+ok(!!(await A.c.from('follows').insert({ follower_id: A.id, followee_id: A.id })).error, 'ninguém segue a si mesmo');
+ok(!!(await A.c.from('follows').insert({ follower_id: B.id, followee_id: C.id })).error, 'Ana não cria follow em nome do Beto');
+ok(!!(await anon.from('follows').insert({ follower_id: A.id, followee_id: B.id })).error, 'visitante não segue ninguém');
+
+const stAnon = await statsOf(anon, A.id);
+ok(Number(stAnon?.followers_count) === 2 && stAnon?.following_count === null && stAnon?.is_following === false, 'visitante vê só o nº de seguidores da Ana', stAnon);
+const stB = await statsOf(B.c, A.id);
+ok(Number(stB?.followers_count) === 2 && stB?.following_count === null && stB?.is_following === true, 'Beto vê que segue a Ana, mas não quem ela segue', stB);
+const stA = await statsOf(A.c, A.id);
+ok(Number(stA?.followers_count) === 2 && Number(stA?.following_count) === 1, 'Ana vê seguidores e seguindo dela', stA);
+
+const fl = await A.c.rpc('list_my_follows', { p_kind: 'followers' });
+ok(fl.data?.length === 2 && fl.data.some((p) => p.id === B.id && p.username === B.username) && fl.data.some((p) => p.id === C.id), 'Ana lista quem segue ela', fl.error ?? fl.data);
+const fg = await A.c.rpc('list_my_follows', { p_kind: 'following' });
+ok(fg.data?.length === 1 && fg.data[0].id === B.id, 'Ana lista quem ela segue', fg.error ?? fg.data);
+const peek = await B.c.from('follows').select('follower_id').eq('followee_id', A.id);
+ok(peek.data?.length === 1 && peek.data[0].follower_id === B.id, 'Beto não vê os outros seguidores da Ana (só a própria linha)', peek.data);
+ok(!(await anon.from('follows').select('follower_id')).data?.length, 'visitante não lê follows');
+ok(!!(await anon.rpc('list_my_follows', { p_kind: 'followers' })).error, 'visitante não chama list_my_follows');
+
+await A.c.from('follows').delete().eq('follower_id', B.id).eq('followee_id', A.id);
+ok(Number((await statsOf(anon, A.id))?.followers_count) === 2, 'Ana não remove o follow do Beto');
+ok(!(await B.c.from('follows').delete().eq('follower_id', B.id).eq('followee_id', A.id)).error, 'Beto deixa de seguir a Ana');
+ok(Number((await statsOf(anon, A.id))?.followers_count) === 1, 'contagem cai depois de deixar de seguir');
+
 // ------------------------------------------------------------ limpeza
 // Itens primeiro: a trava de subreceita (restrict) impediria apagar as receitas em cascata.
 const createdRecipes = (await admin.from('recipes').select('id').in('user_id', created)).data?.map((r) => r.id) ?? [];
