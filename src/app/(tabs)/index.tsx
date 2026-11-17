@@ -1,16 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { NewRecipeDialog } from '@/components/NewRecipeDialog';
+import { PersonListItem } from '@/components/PersonListItem';
 import { RecipeListItem } from '@/components/RecipeListItem';
 import { KIND } from '@/components/RecipeKind';
 import { colors, radius, spacing } from '@/components/theme';
 import { Chip, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
-import { searchPublicRecipes } from '@/lib/publicLibrary';
+import { searchPublicProfiles, searchPublicRecipes, type PublicPersonSummary } from '@/lib/publicLibrary';
 import { computeGroups, countItems, normalizeSearch } from '@/lib/shopping';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import type { PublicRecipeSummary, Recipe, RecipeKind } from '@/lib/types';
@@ -23,7 +24,8 @@ export default function RecipesScreen() {
   const requestedTab = tabParam === 'collection' || tabParam === 'explore' ? tabParam : null;
   const [tab, setTab] = useState<Tab>(requestedTab ?? 'collection');
   const [query, setQuery] = useState('');
-  const [exploreKind, setExploreKind] = useState<KindFilter>('ALL');
+  const [exploreKind, setExploreKind] = useState<ExploreFilter>('ALL');
+  const searchingPeople = tab === 'explore' && exploreKind === 'USER';
   const [creating, setCreating] = useState(false);
   const [seenParam, setSeenParam] = useState(tabParam);
   if (tabParam !== seenParam) {
@@ -46,11 +48,12 @@ export default function RecipesScreen() {
             { value: 'explore', label: 'Explorar', icon: 'compass-outline' },
           ]}
         />
-        {/* Abaixo do toggle: cada aba busca coisas diferentes. Pessoas têm busca própria (Buscar amigos). */}
+        {/* Abaixo do toggle: cada aba busca coisas diferentes. No Explorar, o filtro Usuários busca pessoas. */}
         <SearchBar
           value={query}
           onChangeText={setQuery}
           placeholder={tab === 'explore' ? EXPLORE_PLACEHOLDER[exploreKind] : 'Buscar no seu caderno...'}
+          autoCapitalize={searchingPeople ? 'none' : undefined}
         />
       </View>
 
@@ -120,11 +123,17 @@ const EMPTY_TEXT: Record<KindFilter, { allSaved: string; allSavedHint: string; n
   },
 };
 
+/** Explorar também busca pessoas. */
+type ExploreFilter = KindFilter | 'USER';
+
+const EXPLORE_FILTERS: { value: ExploreFilter; label: string }[] = [...FILTERS, { value: 'USER', label: 'Usuários' }];
+
 /** Busca do Explorar acompanha a categoria escolhida. */
-const EXPLORE_PLACEHOLDER: Record<KindFilter, string> = {
+const EXPLORE_PLACEHOLDER: Record<ExploreFilter, string> = {
   ALL: 'Buscar receitas e preparos...',
   RECIPE: 'Buscar receitas...',
   PREP: 'Buscar preparos...',
+  USER: 'Buscar pelo nome de usuário...',
 };
 
 /** Meu caderno: receitas criadas por você + salvas de outras pessoas (estas somente leitura). */
@@ -192,8 +201,75 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
   );
 }
 
-/** Biblioteca pública: todas, ou só Receitas ou só Preparos. Pessoas ficam na busca de amigos. */
-function ExploreList({ query, kind, onKindChange }: { query: string; kind: KindFilter; onKindChange: (k: KindFilter) => void }) {
+/** Explorar: biblioteca pública (todas, Receitas ou Preparos) ou busca de pessoas (Usuários). */
+function ExploreList({ query, kind, onKindChange }: { query: string; kind: ExploreFilter; onKindChange: (k: ExploreFilter) => void }) {
+  if (!isSupabaseConfigured) {
+    return <EmptyState icon="cloud-offline-outline" title="Explorar indisponível" subtitle="O app não está conectado ao servidor." />;
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, flexWrap: 'wrap' }]} accessibilityRole="tablist">
+        {EXPLORE_FILTERS.map((f) => (
+          <Chip key={f.value} label={f.label} selected={kind === f.value} onPress={() => onKindChange(f.value)} />
+        ))}
+      </View>
+      {kind === 'USER' ? <PeopleResults query={query} /> : <RecipeResults query={query} kind={kind} />}
+    </View>
+  );
+}
+
+/** Busca de pessoas: só pelo nome de usuário exato. Nada aparece antes de digitar (não é uma lista de todo mundo). */
+function PeopleResults({ query }: { query: string }) {
+  const { userId } = useAuth();
+  const term = query.trim();
+  // Resultado da última busca concluída; se for de outro termo, ainda está buscando.
+  const [result, setResult] = useState<{ term: string; data: PublicPersonSummary[]; error?: undefined } | { term: string; data?: undefined; error: unknown } | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!term) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const data = await searchPublicProfiles(term, userId);
+        if (!cancelled) setResult({ term, data });
+      } catch (e) {
+        if (!cancelled) setResult({ term, error: e });
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [term, userId, tick]);
+
+  const retry = () => {
+    setResult(null);
+    setTick((n) => n + 1);
+  };
+
+  if (!term)
+    return <EmptyState icon="people-outline" title="Encontre seus amigos" subtitle="Digite o nome de usuário exato de quem você procura (ex.: maria.silva)." />;
+  if (!result || result.term !== term) return <Loading />;
+  if (!result.data) return <ErrorView error={result.error} context={{ title: 'Não foi possível buscar' }} onRetry={retry} />;
+
+  return (
+    <FlatList
+      data={result.data}
+      keyExtractor={(p) => p.id}
+      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
+      keyboardShouldPersistTaps="handled"
+      renderItem={({ item }) => <PersonListItem person={item} />}
+      ListEmptyComponent={
+        <EmptyState icon="search" title="Ninguém encontrado" subtitle={`Ninguém com o usuário "${term.replace(/^@+/, '')}". Confira se digitou o nome exato.`} />
+      }
+    />
+  );
+}
+
+/** Receitas e preparos publicados. */
+function RecipeResults({ query, kind }: { query: string; kind: KindFilter }) {
   const { userId } = useAuth();
   const { findCopyOf } = useData();
   const [results, setResults] = useState<PublicRecipeSummary[]>([]);
@@ -237,47 +313,11 @@ function ExploreList({ query, kind, onKindChange }: { query: string; kind: KindF
     };
   }, [query, userId, tick]);
 
-  if (!isSupabaseConfigured) {
-    return <EmptyState icon="cloud-offline-outline" title="Receitas publicadas indisponíveis" subtitle="O app não está conectado ao servidor." />;
-  }
-
-  // Categorias à esquerda; atalho discreto para buscar amigos à direita.
-  const header = (
-    <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }]}>
-      <View style={[styles.row, { gap: spacing.xs, flex: 1 }]} accessibilityRole="tablist">
-        {FILTERS.map((f) => (
-          <Chip key={f.value} label={f.label} selected={kind === f.value} onPress={() => onKindChange(f.value)} />
-        ))}
-      </View>
-      <Pressable
-        onPress={() => router.push('/people')}
-        accessibilityRole="link"
-        accessibilityLabel="Buscar amigos"
-        hitSlop={8}
-        style={({ pressed }) => [styles.row, { gap: 4 }, pressed && { opacity: 0.6 }]}
-      >
-        <Ionicons name="people-outline" size={18} color={colors.muted} />
-        <Text style={styles.muted}>Buscar amigos</Text>
-      </Pressable>
-    </View>
-  );
-
-  if (loading)
-    return (
-      <View style={{ flex: 1 }}>
-        {header}
-        <Loading />
-      </View>
-    );
+  if (loading) return <Loading />;
 
   // Sem nada para mostrar: erro ocupa a área. Com resultados antigos: aviso no topo, lista continua.
   if (error && results.length === 0) {
-    return (
-      <View style={{ flex: 1 }}>
-        {header}
-        <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />
-      </View>
-    );
+    return <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />;
   }
 
   // As que já estão no caderno não aparecem aqui.
@@ -287,41 +327,38 @@ function ExploreList({ query, kind, onKindChange }: { query: string; kind: KindF
   const text = EMPTY_TEXT[kind];
 
   return (
-    <View style={{ flex: 1 }}>
-      {header}
-      <FlatList
-        data={visible}
-        keyExtractor={(r) => r.id}
-        contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
-        ListHeaderComponent={
-          error ? (
-            <ErrorBanner
-              error={error}
-              message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
-              onRetry={retry}
-              retrying={refreshing}
-              onDismiss={() => setError(null)}
-              style={{ marginBottom: spacing.xs }}
-            />
-          ) : undefined
-        }
-        renderItem={({ item }) => (
-          <RecipeListItem id={item.id} kind={item.kind} name={item.name} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
-        )}
-        ListEmptyComponent={
-          error ? undefined : allSaved ? (
-            <EmptyState icon="bookmark-outline" title={text.allSaved} subtitle={text.allSavedHint} />
-          ) : (
-            <EmptyState
-              icon={kind === 'ALL' ? 'compass-outline' : KIND[kind].icon}
-              title={query ? text.notFound : text.nonePublished}
-              subtitle={query ? undefined : 'Em breve, novidades por aqui.'}
-            />
-          )
-        }
-      />
-    </View>
+    <FlatList
+      data={visible}
+      keyExtractor={(r) => r.id}
+      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
+      ListHeaderComponent={
+        error ? (
+          <ErrorBanner
+            error={error}
+            message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
+            onRetry={retry}
+            retrying={refreshing}
+            onDismiss={() => setError(null)}
+            style={{ marginBottom: spacing.xs }}
+          />
+        ) : undefined
+      }
+      renderItem={({ item }) => (
+        <RecipeListItem id={item.id} kind={item.kind} name={item.name} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
+      )}
+      ListEmptyComponent={
+        error ? undefined : allSaved ? (
+          <EmptyState icon="bookmark-outline" title={text.allSaved} subtitle={text.allSavedHint} />
+        ) : (
+          <EmptyState
+            icon={kind === 'ALL' ? 'compass-outline' : KIND[kind].icon}
+            title={query ? text.notFound : text.nonePublished}
+            subtitle={query ? undefined : 'Em breve, novidades por aqui.'}
+          />
+        )
+      }
+    />
   );
 }

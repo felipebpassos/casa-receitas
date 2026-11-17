@@ -26,7 +26,7 @@ export async function searchPublicRecipes(q: string, excludeUserId: string | nul
 
 export type PublicPersonSummary = { id: string; name: string | null; recipeCount: number };
 
-/** Buscar amigos: só pelo nome de usuário exato. */
+/** Explorar > Usuários: só pelo nome de usuário exato. */
 export async function searchPublicProfiles(q: string, excludeUserId: string | null): Promise<PublicPersonSummary[]> {
   const { data, error, status } = await supabase.rpc('search_public_profiles', { q });
   if (error) throw serviceError({ ...error, status });
