@@ -23,6 +23,7 @@ export default function RecipesScreen() {
   const requestedTab = tabParam === 'collection' || tabParam === 'explore' ? tabParam : null;
   const [tab, setTab] = useState<Tab>(requestedTab ?? 'collection');
   const [query, setQuery] = useState('');
+  const [exploreKind, setExploreKind] = useState<KindFilter>('ALL');
   const [creating, setCreating] = useState(false);
   const [seenParam, setSeenParam] = useState(tabParam);
   if (tabParam !== seenParam) {
@@ -49,11 +50,11 @@ export default function RecipesScreen() {
         <SearchBar
           value={query}
           onChangeText={setQuery}
-          placeholder={tab === 'explore' ? 'Buscar receitas e preparos...' : 'Buscar no seu caderno...'}
+          placeholder={tab === 'explore' ? EXPLORE_PLACEHOLDER[exploreKind] : 'Buscar no seu caderno...'}
         />
       </View>
 
-      {tab === 'explore' ? <ExploreList query={query} /> : <CollectionList query={query} />}
+      {tab === 'explore' ? <ExploreList query={query} kind={exploreKind} onKindChange={setExploreKind} /> : <CollectionList query={query} />}
 
       {tab === 'collection' && (
         <Pressable
@@ -96,6 +97,35 @@ const FILTERS: { value: KindFilter; label: string }[] = [
   { value: 'RECIPE', label: KIND.RECIPE.plural },
   { value: 'PREP', label: KIND.PREP.plural },
 ];
+
+/** Textos da lista vazia do Explorar, por categoria. */
+const EMPTY_TEXT: Record<KindFilter, { allSaved: string; allSavedHint: string; notFound: string; nonePublished: string }> = {
+  ALL: {
+    allSaved: 'Você já salvou tudo',
+    allSavedHint: 'O que você salvou está no seu caderno.',
+    notFound: 'Nada encontrado',
+    nonePublished: 'Nada publicado ainda',
+  },
+  RECIPE: {
+    allSaved: 'Você já salvou todas',
+    allSavedHint: 'As receitas que você salvou estão no seu caderno.',
+    notFound: 'Nenhuma receita encontrada',
+    nonePublished: 'Nenhuma receita publicada ainda',
+  },
+  PREP: {
+    allSaved: 'Você já salvou todos',
+    allSavedHint: 'Os preparos que você salvou estão no seu caderno.',
+    notFound: 'Nenhum preparo encontrado',
+    nonePublished: 'Nenhum preparo publicado ainda',
+  },
+};
+
+/** Busca do Explorar acompanha a categoria escolhida. */
+const EXPLORE_PLACEHOLDER: Record<KindFilter, string> = {
+  ALL: 'Buscar receitas e preparos...',
+  RECIPE: 'Buscar receitas...',
+  PREP: 'Buscar preparos...',
+};
 
 /** Meu caderno: receitas criadas por você + salvas de outras pessoas (estas somente leitura). */
 function CollectionList({ query }: { query: string }) {
@@ -162,11 +192,10 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
   );
 }
 
-/** Biblioteca pública: uma categoria por vez (Receitas ou Preparos). Pessoas ficam na busca de amigos. */
-function ExploreList({ query }: { query: string }) {
+/** Biblioteca pública: todas, ou só Receitas ou só Preparos. Pessoas ficam na busca de amigos. */
+function ExploreList({ query, kind, onKindChange }: { query: string; kind: KindFilter; onKindChange: (k: KindFilter) => void }) {
   const { userId } = useAuth();
   const { findCopyOf } = useData();
-  const [kind, setKind] = useState<RecipeKind>('RECIPE');
   const [results, setResults] = useState<PublicRecipeSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<unknown>(null);
@@ -216,8 +245,8 @@ function ExploreList({ query }: { query: string }) {
   const header = (
     <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }]}>
       <View style={[styles.row, { gap: spacing.xs, flex: 1 }]} accessibilityRole="tablist">
-        {(['RECIPE', 'PREP'] as const).map((k) => (
-          <Chip key={k} label={KIND[k].plural} selected={kind === k} onPress={() => setKind(k)} />
+        {FILTERS.map((f) => (
+          <Chip key={f.value} label={f.label} selected={kind === f.value} onPress={() => onKindChange(f.value)} />
         ))}
       </View>
       <Pressable
@@ -252,10 +281,10 @@ function ExploreList({ query }: { query: string }) {
   }
 
   // As que já estão no caderno não aparecem aqui.
-  const ofKind = results.filter((r) => r.kind === kind);
+  const ofKind = kind === 'ALL' ? results : results.filter((r) => r.kind === kind);
   const visible = ofKind.filter((r) => !findCopyOf(r.id));
   const allSaved = ofKind.length > 0 && visible.length === 0;
-  const isPrep = kind === 'PREP';
+  const text = EMPTY_TEXT[kind];
 
   return (
     <View style={{ flex: 1 }}>
@@ -283,23 +312,11 @@ function ExploreList({ query }: { query: string }) {
         )}
         ListEmptyComponent={
           error ? undefined : allSaved ? (
-            <EmptyState
-              icon="bookmark-outline"
-              title={isPrep ? 'Você já salvou todos' : 'Você já salvou todas'}
-              subtitle={`${isPrep ? 'Os preparos' : 'As receitas'} que você salvou estão no seu caderno.`}
-            />
+            <EmptyState icon="bookmark-outline" title={text.allSaved} subtitle={text.allSavedHint} />
           ) : (
             <EmptyState
-              icon={KIND[kind].icon}
-              title={
-                query
-                  ? isPrep
-                    ? 'Nenhum preparo encontrado'
-                    : 'Nenhuma receita encontrada'
-                  : isPrep
-                    ? 'Nenhum preparo publicado ainda'
-                    : 'Nenhuma receita publicada ainda'
-              }
+              icon={kind === 'ALL' ? 'compass-outline' : KIND[kind].icon}
+              title={query ? text.notFound : text.nonePublished}
               subtitle={query ? undefined : 'Em breve, novidades por aqui.'}
             />
           )
