@@ -151,6 +151,19 @@ ok(s2.data?.some((r) => r.name === 'Lasanha'), 'busca pelo nome do preparo acha 
 const s3 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
 ok(s3.data?.[0]?.author_name === A.username && Number(s3.data?.[0]?.item_count) === 3, 'resultado traz autor e nº de itens', s3.data);
 ok(s3.data?.[0]?.kind === 'RECIPE' && s1.data?.find((r) => r.name === 'Molho bolonhesa')?.kind === 'PREP', 'resultado traz o tipo', s3.data);
+const sAll = await anon.rpc('search_public_recipes', { q: '' });
+const sPage = await anon.rpc('search_public_recipes', { q: '', p_limit: 1, p_offset: 1 });
+ok(
+  !sPage.error && sPage.data?.length === 1 && sPage.data[0].id === sAll.data?.[1]?.id && Number(sPage.data[0].total_count) === sAll.data?.length,
+  'busca paginada: página 2 de tamanho 1 traz o 2º resultado e o total',
+  sPage.error ?? sPage.data,
+);
+const sPrep = await anon.rpc('search_public_recipes', { q: 'molho', p_kind: 'PREP' });
+ok(sPrep.data?.length > 0 && sPrep.data.every((r) => r.kind === 'PREP'), 'filtro por tipo vem do servidor', sPrep.data);
+const sExcl = await anon.rpc('search_public_recipes', { q: 'lasanha', p_exclude: [lasanha.id] });
+ok(!sExcl.data?.some((r) => r.id === lasanha.id), 'as já salvas (p_exclude) ficam de fora', sExcl.data);
+const sOwn = await A.c.rpc('search_public_recipes', { q: 'lasanha' });
+ok(!sOwn.data?.some((r) => r.id === lasanha.id), 'a busca não mostra as receitas da própria pessoa', sOwn.data);
 const items = await anon.from('recipe_items').select('ingredient_id').eq('recipe_id', molho.id);
 ok(items.data?.length === 2, 'visitante lê os itens do preparo público', items);
 

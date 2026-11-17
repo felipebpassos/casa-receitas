@@ -17,11 +17,42 @@ const toSummary = (r: SummaryRow): PublicRecipeSummary => ({
   itemCount: Number(r.item_count),
 });
 
-/** Busca do Explorar: só as receitas que a equipe destacou. */
-export async function searchPublicRecipes(q: string, excludeUserId: string | null): Promise<PublicRecipeSummary[]> {
-  const { data, error, status } = await supabase.rpc('search_public_recipes', { q });
+export const EXPLORE_PAGE_SIZE = 20;
+
+export type PublicRecipePage = {
+  items: PublicRecipeSummary[];
+  /** Resultados da busca, em todas as páginas (sem as já salvas). */
+  total: number;
+  /** O mesmo, contando as já salvas. */
+  matched: number;
+};
+
+/**
+ * Busca do Explorar: só as receitas que a equipe destacou, uma página por vez.
+ * As da pessoa logada e as já salvas (`excludeIds`) ficam de fora e não contam no total.
+ */
+export async function searchPublicRecipes(
+  q: string,
+  opts: { kind?: 'RECIPE' | 'PREP' | null; excludeIds?: string[]; offset?: number; limit?: number } = {},
+): Promise<PublicRecipePage> {
+  const { data, error, status } = await supabase.rpc('search_public_recipes', {
+    q,
+    p_kind: opts.kind ?? null,
+    p_exclude: opts.excludeIds ?? [],
+    p_limit: opts.limit ?? EXPLORE_PAGE_SIZE,
+    p_offset: opts.offset ?? 0,
+  });
   if (error) throw serviceError({ ...error, status });
-  return (data as SummaryRow[]).filter((r) => r.user_id !== excludeUserId).map(toSummary);
+  const rows = data as (SummaryRow & { total_count: number; matched_count: number })[];
+  if (rows.length) return { items: rows.map(toSummary), total: Number(rows[0].total_count), matched: Number(rows[0].matched_count) };
+
+  // Primeira página vazia: descobre se é porque tudo já foi salvo.
+  let matched = 0;
+  if (!opts.offset && opts.excludeIds?.length) {
+    const all = await supabase.rpc('search_public_recipes', { q, p_kind: opts.kind ?? null, p_limit: 1 });
+    if (!all.error) matched = Number((all.data as { matched_count: number }[])[0]?.matched_count ?? 0);
+  }
+  return { items: [], total: 0, matched };
 }
 
 export type PublicPersonSummary = { id: string; name: string | null; recipeCount: number };

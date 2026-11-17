@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { PersonListItem } from '@/components/PersonListItem';
 import { RecipeListItem } from '@/components/RecipeListItem';
@@ -75,7 +75,7 @@ export default function ExploreScreen() {
           <Chip key={f.value} label={f.label} selected={kind === f.value} onPress={() => setKind(f.value)} />
         ))}
       </View>
-      {kind === 'USER' ? <PeopleResults query={query} /> : <RecipeResults query={query} kind={kind} />}
+      {kind === 'USER' ? <PeopleResults query={query} /> : <RecipeResults key={kind} query={query} kind={kind} />}
     </View>
   );
 }
@@ -129,18 +129,33 @@ function PeopleResults({ query }: { query: string }) {
   );
 }
 
-/** Receitas e preparos publicados. */
+type RecipePageState = { items: PublicRecipeSummary[]; total: number; matched: number };
+
+/** Receitas e preparos publicados, em páginas (carrega mais ao chegar no fim da lista). */
 function RecipeResults({ query, kind }: { query: string; kind: KindFilter }) {
   const { userId } = useAuth();
-  const { findCopyOf } = useData();
-  const [results, setResults] = useState<PublicRecipeSummary[]>([]);
+  const { recipes, findCopyOf } = useData();
+  const [page, setPage] = useState<RecipePageState>({ items: [], total: 0, matched: 0 });
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<unknown>(null);
   const [error, setError] = useState<unknown>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tick, setTick] = useState(0);
 
-  // Digitação espera 300 ms; "tentar de novo" e puxar para atualizar buscam na hora.
+  // As já salvas não aparecem nem contam. Lidas na hora da busca (salvar uma não recarrega a lista).
+  const savedIds = useRef<string[]>([]);
+  useEffect(() => {
+    savedIds.current = recipes.map((r) => r.originRecipeId).filter((x): x is string => !!x);
+  }, [recipes]);
+  const kindParam = kind === 'ALL' ? null : kind;
+
+  // Cada busca nova invalida as páginas que ainda estavam chegando da anterior.
+  const generation = useRef(0);
+
+  // Digitação espera 300 ms; trocar a categoria, "tentar de novo" e puxar para atualizar buscam na hora.
   const immediate = useRef(false);
+  const lastQuery = useRef(query);
   const retry = () => {
     immediate.current = true;
     setRefreshing(true);
@@ -148,42 +163,67 @@ function RecipeResults({ query, kind }: { query: string; kind: KindFilter }) {
   };
 
   useEffect(() => {
-    let cancelled = false;
-    const delay = immediate.current ? 0 : 300;
+    const gen = ++generation.current;
+    const delay = immediate.current || lastQuery.current === query ? 0 : 300;
     immediate.current = false;
+    lastQuery.current = query;
     const t = setTimeout(async () => {
+      setLoadingMore(false);
+      setMoreError(null);
       try {
-        const data = await searchPublicRecipes(query, userId);
-        if (!cancelled) {
-          setResults(data);
+        const data = await searchPublicRecipes(query, { kind: kindParam, excludeIds: savedIds.current });
+        if (gen === generation.current) {
+          setPage(data);
           setError(null);
         }
       } catch (e) {
-        if (!cancelled) setError(e);
+        if (gen === generation.current) setError(e);
       } finally {
-        if (!cancelled) {
+        if (gen === generation.current) {
           setLoading(false);
           setRefreshing(false);
         }
       }
     }, delay);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [query, userId, tick]);
+    return () => clearTimeout(t);
+  }, [query, kindParam, userId, tick]);
+
+  // Salvas depois de carregar a página somem da lista e do total.
+  const visible = page.items.filter((r) => !findCopyOf(r.id));
+  const total = Math.max(page.total - (page.items.length - visible.length), visible.length);
+  const hasMore = visible.length < total;
+
+  const loadMore = async (afterError = false) => {
+    if (loading || loadingMore || refreshing || !hasMore || (moreError && !afterError)) return;
+    const gen = generation.current;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      // O servidor já tira as salvas, então a próxima página começa depois das que ainda aparecem.
+      const data = await searchPublicRecipes(query, { kind: kindParam, excludeIds: savedIds.current, offset: visible.length });
+      if (gen !== generation.current) return;
+      setPage((prev) => {
+        const kept = prev.items.filter((r) => !findCopyOf(r.id));
+        const seen = new Set(kept.map((r) => r.id));
+        const items = [...kept, ...data.items.filter((r) => !seen.has(r.id))];
+        // Página vazia: a busca encolheu desde a primeira página; para de pedir mais.
+        return { items, total: data.items.length ? Math.max(data.total, items.length) : items.length, matched: prev.matched };
+      });
+    } catch (e) {
+      if (gen === generation.current) setMoreError(e);
+    } finally {
+      if (gen === generation.current) setLoadingMore(false);
+    }
+  };
 
   if (loading) return <Loading />;
 
   // Sem nada para mostrar: erro ocupa a área. Com resultados antigos: aviso no topo, lista continua.
-  if (error && results.length === 0) {
+  if (error && page.items.length === 0) {
     return <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />;
   }
 
-  // As que já estão salvas não aparecem aqui.
-  const ofKind = kind === 'ALL' ? results : results.filter((r) => r.kind === kind);
-  const visible = ofKind.filter((r) => !findCopyOf(r.id));
-  const allSaved = ofKind.length > 0 && visible.length === 0;
+  const allSaved = visible.length === 0 && (page.matched > 0 || page.items.length > 0);
   const text = EMPTY_TEXT[kind];
 
   return (
@@ -193,16 +233,32 @@ function RecipeResults({ query, kind }: { query: string; kind: KindFilter }) {
       contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
       keyboardShouldPersistTaps="handled"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
+      onEndReached={() => loadMore()}
+      onEndReachedThreshold={0.5}
       ListHeaderComponent={
-        error ? (
-          <ErrorBanner
-            error={error}
-            message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
-            onRetry={retry}
-            retrying={refreshing}
-            onDismiss={() => setError(null)}
-            style={{ marginBottom: spacing.xs }}
-          />
+        <>
+          {error ? (
+            <ErrorBanner
+              error={error}
+              message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
+              onRetry={retry}
+              retrying={refreshing}
+              onDismiss={() => setError(null)}
+              style={{ marginBottom: spacing.xs }}
+            />
+          ) : null}
+          {total > 0 ? (
+            <Text style={styles.muted} accessibilityLiveRegion="polite">
+              {total === 1 ? '1 resultado' : `${total.toLocaleString('pt-BR')} resultados`}
+            </Text>
+          ) : null}
+        </>
+      }
+      ListFooterComponent={
+        loadingMore ? (
+          <ActivityIndicator color={colors.primary} style={{ paddingVertical: spacing.md }} />
+        ) : moreError ? (
+          <ErrorBanner error={moreError} message="Não foi possível carregar mais resultados." onRetry={() => loadMore(true)} />
         ) : undefined
       }
       renderItem={({ item }) => (
