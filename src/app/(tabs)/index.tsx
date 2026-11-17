@@ -1,65 +1,69 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
-import { ErrorBanner, ErrorView } from '@/components/ErrorState';
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FlatList, Pressable, View } from 'react-native';
 import { NewRecipeDialog } from '@/components/NewRecipeDialog';
-import { PersonListItem } from '@/components/PersonListItem';
 import { RecipeListItem } from '@/components/RecipeListItem';
-import { KIND } from '@/components/RecipeKind';
+import { KIND, KIND_FILTERS, type KindFilter } from '@/components/RecipeKind';
 import { colors, radius, spacing } from '@/components/theme';
-import { Chip, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
-import { useAuth } from '@/context/AuthProvider';
+import { Chip, EmptyState, SearchBar, Segmented, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
-import { searchPublicProfiles, searchPublicRecipes, type PublicPersonSummary } from '@/lib/publicLibrary';
 import { computeGroups, countItems, normalizeSearch } from '@/lib/shopping';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import type { PublicRecipeSummary, Recipe, RecipeKind } from '@/lib/types';
+import type { Recipe } from '@/lib/types';
 
-type Tab = 'collection' | 'explore';
+/** Minhas: criadas por você. Salvas: cópias de receitas de outras pessoas. */
+type Scope = 'mine' | 'saved';
 
 export default function RecipesScreen() {
-  // Atalhos de outras telas podem abrir uma aba específica (ex.: ?tab=explore).
+  // Atalhos de outras telas podem abrir um escopo específico (ex.: ?tab=saved).
+  // ?tab=new abre Minhas já com a escolha de Receita/Preparo para cadastrar.
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
-  const requestedTab = tabParam === 'collection' || tabParam === 'explore' ? tabParam : null;
-  const [tab, setTab] = useState<Tab>(requestedTab ?? 'collection');
+  const requested = tabParam === 'mine' || tabParam === 'saved' ? tabParam : tabParam === 'new' ? 'mine' : null;
+  const [scope, setScope] = useState<Scope>(requested ?? 'mine');
   const [query, setQuery] = useState('');
-  const [exploreKind, setExploreKind] = useState<ExploreFilter>('ALL');
-  const searchingPeople = tab === 'explore' && exploreKind === 'USER';
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState(tabParam === 'new');
   const [seenParam, setSeenParam] = useState(tabParam);
   if (tabParam !== seenParam) {
     setSeenParam(tabParam);
-    if (requestedTab) setTab(requestedTab);
+    if (requested) setScope(requested);
+    if (tabParam === 'new') setCreating(true);
   }
   // Limpa o parâmetro para que o mesmo atalho funcione de novo depois.
   useEffect(() => {
     if (tabParam) router.setParams({ tab: undefined });
   }, [tabParam]);
+  // Ao trocar para outra aba do menu, volta para Minhas: quem retorna sempre começa pelas próprias receitas.
+  // Feito na saída (não na volta) para não sobrescrever um atalho como ?tab=saved.
+  // Abrir uma receita por cima não conta: a aba ativa continua sendo esta.
+  const navigation = useNavigation();
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        const { routes, index } = navigation.getState() ?? {};
+        if (routes && index != null && routes[index]?.name !== 'index') setScope('mine');
+      },
+      [navigation],
+    ),
+  );
 
   return (
     <View style={styles.screen}>
       <View style={{ padding: spacing.lg, gap: spacing.md }}>
-        <Segmented<Tab>
-          value={tab}
-          onChange={setTab}
+        <Segmented<Scope>
+          value={scope}
+          onChange={setScope}
           options={[
-            { value: 'collection', label: 'Meu caderno', icon: 'book-outline' },
-            { value: 'explore', label: 'Explorar', icon: 'compass-outline' },
+            { value: 'mine', label: 'Minhas', icon: 'book-outline' },
+            { value: 'saved', label: 'Salvas', icon: 'bookmark-outline' },
           ]}
         />
-        {/* Abaixo do toggle: cada aba busca coisas diferentes. No Explorar, o filtro Usuários busca pessoas. */}
-        <SearchBar
-          value={query}
-          onChangeText={setQuery}
-          placeholder={tab === 'explore' ? EXPLORE_PLACEHOLDER[exploreKind] : 'Buscar no seu caderno...'}
-          autoCapitalize={searchingPeople ? 'none' : undefined}
-        />
+        <SearchBar value={query} onChangeText={setQuery} placeholder={scope === 'saved' ? 'Buscar nas salvas...' : 'Buscar nas suas receitas...'} />
       </View>
 
-      {tab === 'explore' ? <ExploreList query={query} kind={exploreKind} onKindChange={setExploreKind} /> : <CollectionList query={query} />}
+      <CollectionList query={query} scope={scope} />
 
-      {tab === 'collection' && (
+      {/* Criar só faz sentido em Minhas: Salvas são receitas de outras pessoas. */}
+      {scope === 'mine' && (
         <Pressable
           onPress={() => setCreating(true)}
           accessibilityLabel="Cadastrar receita ou preparo"
@@ -93,57 +97,16 @@ export default function RecipesScreen() {
   );
 }
 
-type KindFilter = 'ALL' | RecipeKind;
-
-const FILTERS: { value: KindFilter; label: string }[] = [
-  { value: 'ALL', label: 'Todos' },
-  { value: 'RECIPE', label: KIND.RECIPE.plural },
-  { value: 'PREP', label: KIND.PREP.plural },
-];
-
-/** Textos da lista vazia do Explorar, por categoria. */
-const EMPTY_TEXT: Record<KindFilter, { allSaved: string; allSavedHint: string; notFound: string; nonePublished: string }> = {
-  ALL: {
-    allSaved: 'Você já salvou tudo',
-    allSavedHint: 'O que você salvou está no seu caderno.',
-    notFound: 'Nada encontrado',
-    nonePublished: 'Nada publicado ainda',
-  },
-  RECIPE: {
-    allSaved: 'Você já salvou todas',
-    allSavedHint: 'As receitas que você salvou estão no seu caderno.',
-    notFound: 'Nenhuma receita encontrada',
-    nonePublished: 'Nenhuma receita publicada ainda',
-  },
-  PREP: {
-    allSaved: 'Você já salvou todos',
-    allSavedHint: 'Os preparos que você salvou estão no seu caderno.',
-    notFound: 'Nenhum preparo encontrado',
-    nonePublished: 'Nenhum preparo publicado ainda',
-  },
-};
-
-/** Explorar também busca pessoas. */
-type ExploreFilter = KindFilter | 'USER';
-
-const EXPLORE_FILTERS: { value: ExploreFilter; label: string }[] = [...FILTERS, { value: 'USER', label: 'Usuários' }];
-
-/** Busca do Explorar acompanha a categoria escolhida. */
-const EXPLORE_PLACEHOLDER: Record<ExploreFilter, string> = {
-  ALL: 'Buscar receitas e preparos...',
-  RECIPE: 'Buscar receitas...',
-  PREP: 'Buscar preparos...',
-  USER: 'Buscar pelo nome de usuário...',
-};
-
-/** Meu caderno: receitas criadas por você + salvas de outras pessoas (estas somente leitura). */
-function CollectionList({ query }: { query: string }) {
+/** Lista do caderno no escopo escolhido (salvas são somente leitura). */
+function CollectionList({ query, scope }: { query: string; scope: Scope }) {
   const { recipes, ingredientName, getRecipe, needsContext } = useData();
   const [filter, setFilter] = useState<KindFilter>('ALL');
 
+  const inScope = useMemo(() => recipes.filter((r) => !!r.originRecipeId === (scope === 'saved')), [recipes, scope]);
+
   const list = useMemo(() => {
     const q = normalizeSearch(query);
-    return recipes.filter(
+    return inScope.filter(
       (r) =>
         (filter === 'ALL' || r.kind === filter) &&
         (!q ||
@@ -153,26 +116,25 @@ function CollectionList({ query }: { query: string }) {
             return normalizeSearch(name).includes(q);
           })),
     );
-  }, [recipes, query, filter, ingredientName, getRecipe]);
+  }, [inScope, query, filter, ingredientName, getRecipe]);
 
   const empty = (() => {
     if (query) return <EmptyState icon="search" title="Nada encontrado" subtitle={`Nada com "${query}" no nome ou nos ingredientes.`} />;
+    if (scope === 'saved') {
+      if (filter === 'RECIPE') return <EmptyState icon={KIND.RECIPE.icon} title="Nenhuma receita salva" subtitle="Encontre receitas de outras pessoas em Explorar." />;
+      if (filter === 'PREP') return <EmptyState icon={KIND.PREP.icon} title="Nenhum preparo salvo" subtitle="Encontre preparos de outras pessoas em Explorar." />;
+      return <EmptyState icon="bookmark-outline" title="Nada salvo ainda" subtitle="Encontre receitas de outras pessoas em Explorar e salve no seu caderno." />;
+    }
     if (filter === 'RECIPE') return <EmptyState icon={KIND.RECIPE.icon} title="Nenhuma receita ainda" subtitle={`Toque em + e escolha Receita. Ex.: ${KIND.RECIPE.examples}`} />;
     if (filter === 'PREP') return <EmptyState icon={KIND.PREP.icon} title="Nenhum preparo ainda" subtitle={`Toque em + e escolha Preparo. Ex.: ${KIND.PREP.examples}`} />;
-    return (
-      <EmptyState
-        icon="book-outline"
-        title="Seu caderno de receitas está vazio"
-        subtitle="Toque em + para cadastrar uma receita ou um preparo, ou salve receitas de outras pessoas em Explorar."
-      />
-    );
+    return <EmptyState icon="book-outline" title="Nenhuma receita sua ainda" subtitle="Toque em + para cadastrar uma receita ou um preparo." />;
   })();
 
   return (
     <View style={{ flex: 1 }}>
-      {recipes.length > 0 && (
+      {inScope.length > 0 && (
         <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md }]} accessibilityRole="tablist">
-          {FILTERS.map((f) => (
+          {KIND_FILTERS.map((f) => (
             <Chip key={f.value} label={f.label} selected={filter === f.value} onPress={() => setFilter(f.value)} />
           ))}
         </View>
@@ -197,168 +159,6 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
       name={recipe.name}
       itemCount={itemCount}
       author={recipe.originRecipeId ? (recipe.originAuthorName ?? 'usuário') : null}
-    />
-  );
-}
-
-/** Explorar: biblioteca pública (todas, Receitas ou Preparos) ou busca de pessoas (Usuários). */
-function ExploreList({ query, kind, onKindChange }: { query: string; kind: ExploreFilter; onKindChange: (k: ExploreFilter) => void }) {
-  if (!isSupabaseConfigured) {
-    return <EmptyState icon="cloud-offline-outline" title="Explorar indisponível" subtitle="O app não está conectado ao servidor." />;
-  }
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={[styles.row, { gap: spacing.xs, paddingHorizontal: spacing.lg, paddingBottom: spacing.md, flexWrap: 'wrap' }]} accessibilityRole="tablist">
-        {EXPLORE_FILTERS.map((f) => (
-          <Chip key={f.value} label={f.label} selected={kind === f.value} onPress={() => onKindChange(f.value)} />
-        ))}
-      </View>
-      {kind === 'USER' ? <PeopleResults query={query} /> : <RecipeResults query={query} kind={kind} />}
-    </View>
-  );
-}
-
-/** Busca de pessoas: só pelo nome de usuário exato. Nada aparece antes de digitar (não é uma lista de todo mundo). */
-function PeopleResults({ query }: { query: string }) {
-  const { userId } = useAuth();
-  const term = query.trim();
-  // Resultado da última busca concluída; se for de outro termo, ainda está buscando.
-  const [result, setResult] = useState<{ term: string; data: PublicPersonSummary[]; error?: undefined } | { term: string; data?: undefined; error: unknown } | null>(null);
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    if (!term) return;
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      try {
-        const data = await searchPublicProfiles(term, userId);
-        if (!cancelled) setResult({ term, data });
-      } catch (e) {
-        if (!cancelled) setResult({ term, error: e });
-      }
-    }, 300);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [term, userId, tick]);
-
-  const retry = () => {
-    setResult(null);
-    setTick((n) => n + 1);
-  };
-
-  if (!term)
-    return <EmptyState icon="people-outline" title="Encontre seus amigos" subtitle="Digite o nome de usuário exato de quem você procura (ex.: maria.silva)." />;
-  if (!result || result.term !== term) return <Loading />;
-  if (!result.data) return <ErrorView error={result.error} context={{ title: 'Não foi possível buscar' }} onRetry={retry} />;
-
-  return (
-    <FlatList
-      data={result.data}
-      keyExtractor={(p) => p.id}
-      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
-      keyboardShouldPersistTaps="handled"
-      renderItem={({ item }) => <PersonListItem person={item} />}
-      ListEmptyComponent={
-        <EmptyState icon="search" title="Ninguém encontrado" subtitle={`Ninguém com o usuário "${term.replace(/^@+/, '')}". Confira se digitou o nome exato.`} />
-      }
-    />
-  );
-}
-
-/** Receitas e preparos publicados. */
-function RecipeResults({ query, kind }: { query: string; kind: KindFilter }) {
-  const { userId } = useAuth();
-  const { findCopyOf } = useData();
-  const [results, setResults] = useState<PublicRecipeSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<unknown>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [tick, setTick] = useState(0);
-
-  // Digitação espera 300 ms; "tentar de novo" e puxar para atualizar buscam na hora.
-  const immediate = useRef(false);
-  const retry = () => {
-    immediate.current = true;
-    setRefreshing(true);
-    setTick((t) => t + 1);
-  };
-
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    let cancelled = false;
-    const delay = immediate.current ? 0 : 300;
-    immediate.current = false;
-    const t = setTimeout(async () => {
-      try {
-        const data = await searchPublicRecipes(query, userId);
-        if (!cancelled) {
-          setResults(data);
-          setError(null);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e);
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      }
-    }, delay);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [query, userId, tick]);
-
-  if (loading) return <Loading />;
-
-  // Sem nada para mostrar: erro ocupa a área. Com resultados antigos: aviso no topo, lista continua.
-  if (error && results.length === 0) {
-    return <ErrorView error={error} context={{ title: 'Não foi possível carregar as receitas publicadas' }} onRetry={retry} retrying={refreshing} />;
-  }
-
-  // As que já estão no caderno não aparecem aqui.
-  const ofKind = kind === 'ALL' ? results : results.filter((r) => r.kind === kind);
-  const visible = ofKind.filter((r) => !findCopyOf(r.id));
-  const allSaved = ofKind.length > 0 && visible.length === 0;
-  const text = EMPTY_TEXT[kind];
-
-  return (
-    <FlatList
-      data={visible}
-      keyExtractor={(r) => r.id}
-      contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
-      keyboardShouldPersistTaps="handled"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={retry} colors={[colors.primary]} tintColor={colors.primary} />}
-      ListHeaderComponent={
-        error ? (
-          <ErrorBanner
-            error={error}
-            message="Não foi possível atualizar. Mostrando os últimos resultados carregados."
-            onRetry={retry}
-            retrying={refreshing}
-            onDismiss={() => setError(null)}
-            style={{ marginBottom: spacing.xs }}
-          />
-        ) : undefined
-      }
-      renderItem={({ item }) => (
-        <RecipeListItem id={item.id} kind={item.kind} name={item.name} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
-      )}
-      ListEmptyComponent={
-        error ? undefined : allSaved ? (
-          <EmptyState icon="bookmark-outline" title={text.allSaved} subtitle={text.allSavedHint} />
-        ) : (
-          <EmptyState
-            icon={kind === 'ALL' ? 'compass-outline' : KIND[kind].icon}
-            title={query ? text.notFound : text.nonePublished}
-            subtitle={query ? undefined : 'Em breve, novidades por aqui.'}
-          />
-        )
-      }
     />
   );
 }

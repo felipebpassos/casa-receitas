@@ -89,9 +89,10 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       <View>
         <Text style={[ui.label, s.sectionLabel]}>Atalhos</Text>
         <View style={s.menu}>
-          <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.push('/recipe/new')} />
-          <MenuRow icon="book-outline" title="Meu caderno" subtitle="Suas receitas e as que você salvou" onPress={() => router.navigate('/')} />
-          <MenuRow icon="compass-outline" title="Explorar receitas" subtitle="Veja o que outras pessoas publicaram" onPress={() => router.navigate({ pathname: '/', params: { tab: 'explore' } })} />
+          <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.navigate({ pathname: '/', params: { tab: 'new' } })} />
+          <MenuRow icon="book-outline" title="Minhas receitas" subtitle="As receitas e preparos que você criou" onPress={() => router.navigate({ pathname: '/', params: { tab: 'mine' } })} />
+          <MenuRow icon="bookmark-outline" title="Receitas salvas" subtitle="As que você salvou de outras pessoas" onPress={() => router.navigate({ pathname: '/', params: { tab: 'saved' } })} />
+          <MenuRow icon="compass-outline" title="Explorar" subtitle="Veja o que outras pessoas publicaram" onPress={() => router.navigate('/explorar')} />
           <MenuRow icon="cart-outline" title="Semana e lista de compras" subtitle="Planeje as refeições" onPress={() => router.navigate('/semana')} last />
         </View>
       </View>

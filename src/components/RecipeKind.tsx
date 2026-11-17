@@ -64,3 +64,12 @@ export const KIND: Record<RecipeKind, KindMeta> = {
     namePlaceholder: 'Ex.: Molho de tomate',
   },
 };
+
+/** Filtro por tipo nas listas: todos, só receitas ou só preparos. */
+export type KindFilter = 'ALL' | RecipeKind;
+
+export const KIND_FILTERS: { value: KindFilter; label: string }[] = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'RECIPE', label: KIND.RECIPE.plural },
+  { value: 'PREP', label: KIND.PREP.plural },
+];
