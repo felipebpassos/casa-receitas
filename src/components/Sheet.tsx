@@ -141,6 +141,15 @@ export function Sheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A folha pode trocar no meio da subida (ex.: "carregando" → receita pública carregada).
+  // A nova não acompanha a animação que já estava rodando e congela onde estava (baixa demais,
+  // cortando o rodapé, ou alta demais no quique final). Retoma a subida a partir dali.
+  useEffect(() => {
+    anim.stopAnimation((v) => {
+      if (v > 0 && v !== 1) Animated.spring(anim, { toValue: 1, useNativeDriver, friction: 10, tension: 70 }).start();
+    });
+  }, [anim]);
+
   useEffect(() => {
     if (!step) return;
     stepAnim.setValue(0);
@@ -225,8 +234,8 @@ export function Sheet({
 
 const s = StyleSheet.create({
   root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { backgroundColor: 'rgba(61,52,46,0.5)' },
   kav: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { backgroundColor: 'rgba(61,52,46,0.5)' },
   sheet: {
     width: '100%',
     maxWidth: 560,
