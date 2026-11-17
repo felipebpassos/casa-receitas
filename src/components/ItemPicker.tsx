@@ -3,7 +3,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useData } from '@/context/DataProvider';
 import { useFormValidation } from '@/hooks/useFormValidation';
-import { normalizeName, UNITS } from '@/lib/shopping';
+import { normalizeSearch, UNITS } from '@/lib/shopping';
 import type { Ingredient, Recipe } from '@/lib/types';
 import { suggestionSchema } from '@/lib/validation';
 import { ModalScreen } from './ModalScreen';
@@ -41,10 +41,10 @@ export function ItemPicker({
   const [query, setQuery] = useState('');
   const [suggesting, setSuggesting] = useState(false);
 
-  const q = normalizeName(query);
-  const ingredients = useMemo(() => catalog.filter((i) => !q || normalizeName(i.name).includes(q)), [catalog, q]);
-  const preps = useMemo(() => allowedPreps.filter((r) => !q || normalizeName(r.name).includes(q)), [allowedPreps, q]);
-  const exactMatch = ingredients.some((i) => normalizeName(i.name) === q);
+  const q = normalizeSearch(query);
+  const ingredients = useMemo(() => catalog.filter((i) => !q || normalizeSearch(i.name).includes(q)), [catalog, q]);
+  const preps = useMemo(() => allowedPreps.filter((r) => !q || normalizeSearch(r.name).includes(q)), [allowedPreps, q]);
+  const exactMatch = ingredients.some((i) => normalizeSearch(i.name) === q);
 
   const close = () => {
     setQuery('');

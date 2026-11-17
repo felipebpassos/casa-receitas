@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import { useData } from '@/context/DataProvider';
-import { normalizeName } from '@/lib/shopping';
+import { normalizeSearch } from '@/lib/shopping';
 import type { Recipe } from '@/lib/types';
 import { ModalScreen } from './ModalScreen';
 import { KindIcon } from './RecipeKind';
@@ -24,10 +24,10 @@ export function RecipePicker({
   const [query, setQuery] = useState('');
 
   const results = useMemo(() => {
-    const q = normalizeName(query);
+    const q = normalizeSearch(query);
     if (!q) return recipes;
     return recipes.filter(
-      (r) => normalizeName(r.name).includes(q) || r.items.some((i) => i.ingredientId && normalizeName(ingredientName(i.ingredientId)).includes(q)),
+      (r) => normalizeSearch(r.name).includes(q) || r.items.some((i) => i.ingredientId && normalizeSearch(ingredientName(i.ingredientId)).includes(q)),
     );
   }, [recipes, query, ingredientName]);
 

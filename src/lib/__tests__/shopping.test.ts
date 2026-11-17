@@ -8,6 +8,7 @@ import {
   formatQuantity,
   inferKind,
   listCheckKey,
+  normalizeSearch,
   pruneWeeks,
   shoppingListText,
   type NeedGroup,
@@ -78,6 +79,21 @@ test('subpreparo usado por duas receitas: um grupo só, contado uma vez por uso'
   assert.equal(qty(group(groups, 'lasanha'), 'mussarela'), 300);
   assert.equal(qty(group(groups, 'macarrao'), 'mussarela'), 200);
   assert.equal(formatQuantity(1000, 'g'), '1 kg');
+});
+
+test('normalizeSearch ignora acentos, maiúsculas, hífens e espaços repetidos', () => {
+  assert.ok(normalizeSearch('Pimenta-da-jamaica').includes(normalizeSearch('pimenta da')));
+  assert.ok(normalizeSearch('Páprica doce').includes(normalizeSearch('PAPRICA')));
+  assert.ok(normalizeSearch('Grão-de-bico').includes(normalizeSearch('grao  de')));
+  assert.equal(normalizeSearch('  -Pimenta–rosa- '), 'pimenta rosa');
+});
+
+test('formatQuantity mostra 0,5 e 0,25 como fração', () => {
+  assert.equal(formatQuantity(0.5, 'unidade'), '1/2 unidade');
+  assert.equal(formatQuantity(0.25, 'xícara'), '1/4 xícara');
+  assert.equal(formatQuantity(0.5, null), '1/2');
+  assert.equal(formatQuantity(1.5, 'unidade'), '1,5 unidade');
+  assert.equal(formatQuantity(0.75, 'unidade'), '0,75 unidade');
 });
 
 test('mesma receita planejada duas vezes conta duas vezes', () => {

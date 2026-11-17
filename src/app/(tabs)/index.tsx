@@ -1,17 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react';
 import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { ErrorBanner, ErrorView } from '@/components/ErrorState';
 import { NewRecipeDialog } from '@/components/NewRecipeDialog';
 import { KIND, KindIcon } from '@/components/RecipeKind';
-import { StatusBadge } from '@/components/StatusBadge';
 import { colors, radius, spacing } from '@/components/theme';
 import { Chip, EmptyState, Loading, SearchBar, Segmented, styles } from '@/components/ui';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 import { searchPublicRecipes } from '@/lib/publicLibrary';
-import { computeGroups, countItems, normalizeName } from '@/lib/shopping';
+import { computeGroups, countItems, normalizeSearch } from '@/lib/shopping';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import type { PublicRecipeSummary, Recipe, RecipeKind } from '@/lib/types';
 
@@ -103,15 +102,15 @@ function CollectionList({ query }: { query: string }) {
   const [filter, setFilter] = useState<KindFilter>('ALL');
 
   const list = useMemo(() => {
-    const q = normalizeName(query);
+    const q = normalizeSearch(query);
     return recipes.filter(
       (r) =>
         (filter === 'ALL' || r.kind === filter) &&
         (!q ||
-          normalizeName(r.name).includes(q) ||
+          normalizeSearch(r.name).includes(q) ||
           r.items.some((i) => {
             const name = i.ingredientId ? ingredientName(i.ingredientId) : i.subRecipeId ? getRecipe(i.subRecipeId)?.name ?? '' : '';
-            return normalizeName(name).includes(q);
+            return normalizeSearch(name).includes(q);
           })),
     );
   }, [recipes, query, filter, ingredientName, getRecipe]);
@@ -156,31 +155,25 @@ function RecipeCard({ recipe, itemCount }: { recipe: Recipe; itemCount: number }
       id={recipe.id}
       kind={recipe.kind}
       name={recipe.name}
-      description={recipe.description}
       itemCount={itemCount}
       author={recipe.originRecipeId ? (recipe.originAuthorName ?? 'usuário') : null}
-      badge={recipe.originRecipeId ? null : <StatusBadge status={recipe.status} />}
     />
   );
 }
 
-/** Card de receita/preparo das listas. `author` nulo = sua ("Minha"/"Meu"). */
+/** Card de receita/preparo das listas. `author` nulo = sua ("Minha"). */
 function RecipeListItem({
   id,
   kind,
   name,
-  description,
   itemCount,
   author,
-  badge,
 }: {
   id: string;
   kind: RecipeKind;
   name: string;
-  description: string | null;
   itemCount: number;
   author: string | null;
-  badge?: ReactNode;
 }) {
   return (
     <Pressable
@@ -190,21 +183,14 @@ function RecipeListItem({
       style={({ pressed }) => [styles.card, styles.row, { gap: spacing.md }, pressed && { backgroundColor: colors.primaryLight }]}
     >
       <KindIcon kind={kind} />
-      <View style={{ flex: 1, gap: 2 }}>
-        <View style={styles.row}>
-          <Text style={[styles.subtitle, { flexShrink: 1 }]} numberOfLines={1}>
-            {name}
-          </Text>
-          {badge}
-        </View>
-        {description ? (
-          <Text style={styles.muted} numberOfLines={2}>
-            {description}
-          </Text>
-        ) : null}
-        <View style={[styles.row, { gap: spacing.md, marginTop: 2 }]}>
+      <View style={{ flex: 1, gap: spacing.xs }}>
+        {/* Título com a linha toda para ele (até 2 linhas). O status fica só na tela da receita. */}
+        <Text style={[styles.subtitle, { fontSize: 16, lineHeight: 21 }]} numberOfLines={2}>
+          {name}
+        </Text>
+        <View style={[styles.row, { gap: spacing.md }]}>
           <Meta icon="cart-outline" text={`${itemCount} ingrediente${itemCount === 1 ? '' : 's'}`} />
-          <Meta icon="person-outline" text={author ? `por ${author}` : kind === 'PREP' ? 'Meu' : 'Minha'} shrink />
+          <Meta icon="person-outline" text={author ? `por ${author}` : 'Minha'} shrink />
         </View>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.muted} />
@@ -302,7 +288,7 @@ function ExploreList({ query }: { query: string }) {
         ) : undefined
       }
       renderItem={({ item }) => (
-        <RecipeListItem id={item.id} kind={item.kind} name={item.name} description={item.description} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
+        <RecipeListItem id={item.id} kind={item.kind} name={item.name} itemCount={item.itemCount} author={item.authorName ?? 'usuário'} />
       )}
       ListEmptyComponent={
         error ? undefined : allSaved ? (

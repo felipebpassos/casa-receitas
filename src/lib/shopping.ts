@@ -74,7 +74,10 @@ export function toBaseUnit(quantity: number | null, unit: string | null): { quan
   return { quantity: quantity == null ? null : quantity * conv.factor, unit: conv.base };
 }
 
-/** 1500 g → "1,5 kg"; 2000 ml → "2 l"; quantidade nula → "" (ou "a gosto"). */
+/** Quantidades exibidas como fração (0,5 → "1/2"). */
+const FRACTIONS: Record<number, string> = { 0.5: '1/2', 0.25: '1/4' };
+
+/** 1500 g → "1,5 kg"; 2000 ml → "2 l"; 0,5 → "1/2"; quantidade nula → "" (ou "a gosto"). */
 export function formatQuantity(quantity: number | null, unit: string | null): string {
   const u = normalizeUnit(unit);
   if (quantity == null) return u === 'a gosto' ? 'a gosto' : '';
@@ -87,7 +90,7 @@ export function formatQuantity(quantity: number | null, unit: string | null): st
     q /= 1000;
     shown = 'l';
   }
-  const num = Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '').replace('.', ',');
+  const num = FRACTIONS[q] ?? (Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '').replace('.', ','));
   return shown ? `${num} ${shown}` : num;
 }
 
@@ -97,6 +100,17 @@ export function normalizeName(value: string): string {
     .replace(/[̀-ͯ]/g, '')
     .trim()
     .toLowerCase();
+}
+
+/**
+ * Normalização para buscas: além de acentos e maiúsculas, ignora hífens e espaços
+ * repetidos ("pimenta da" encontra "Pimenta-da-jamaica"). Mesma regra de public.normalize_search.
+ */
+export function normalizeSearch(value: string): string {
+  return normalizeName(value)
+    .replace(/[-‐‑–—]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
