@@ -242,6 +242,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
               id: recipeMap.get(r.id)!,
               // O que é usado dentro da receita entra no caderno como preparo.
               kind: r.id === tree.root.id ? r.kind : 'PREP',
+              // O link original só acompanha a cópia se a receita foi aprovada pela equipe.
+              sourceUrl: r.listed ? r.sourceUrl : null,
+              sourcePlatform: r.listed ? r.sourcePlatform : null,
               visibility: 'PRIVATE',
               listed: false,
               originRecipeId: r.id,

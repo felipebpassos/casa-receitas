@@ -82,7 +82,7 @@ export default function RecipesScreen() {
         onClose={() => setCreating(false)}
         onSelect={(kind) => {
           setCreating(false);
-          router.push({ pathname: '/recipe/form', params: { kind } });
+          router.push({ pathname: '/recipe/new', params: { kind } });
         }}
       />
     </View>

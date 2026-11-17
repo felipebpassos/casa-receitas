@@ -49,7 +49,7 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
                 onPress: () => {
                   setWelcomeName(null);
                   goHome();
-                  router.push('/recipe/form');
+                  router.push('/recipe/new');
                 },
               }
             : { title: 'Planejar a semana', icon: 'calendar-outline', onPress: () => (setWelcomeName(null), router.navigate('/semana')) }

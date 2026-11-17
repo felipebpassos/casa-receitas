@@ -66,6 +66,11 @@ function Gate() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="recipe/[id]" options={{ title: 'Receita' }} />
       <Stack.Screen name="recipe/form" options={{ title: 'Receita', presentation: 'modal' }} />
+      {/* Cadastro: a folha anima por conta própria, por cima da tela anterior. */}
+      <Stack.Screen
+        name="recipe/new"
+        options={{ presentation: 'transparentModal', animation: 'none', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
+      />
       <Stack.Screen name="user/[id]" options={{ title: 'Perfil' }} />
       <Stack.Screen name="people" options={{ title: 'Buscar amigos', headerTitleAlign: 'left' }} />
       <Stack.Screen name="account" options={{ title: 'Conta', presentation: 'modal' }} />

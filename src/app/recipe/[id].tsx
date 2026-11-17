@@ -163,6 +163,9 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   const ingredients = recipe.items.filter((i) => !i.subRecipeId);
   const subItems = recipe.items.filter((i) => i.subRecipeId);
   const hasPreparation = parseRichText(recipe.preparation).length > 0;
+  // Link da receita original: só o dono vê, a menos que a equipe tenha aprovado a receita (listed).
+  // Cópias salvas só trazem o link quando a original estava aprovada.
+  const showSource = !!recipe.sourceUrl && (isOwn || isSavedCopy || recipe.listed);
   const openSource = () =>
     Linking.openURL(recipe.sourceUrl!).catch(() => toast.error(new UserFacingError('Não foi possível abrir este link.', 'Link inválido')));
 
@@ -277,7 +280,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
       {/* Ações principais, sempre à mão */}
       <BottomBar>
         <Button title="Adicionar à semana" icon="calendar-outline" loading={busy} onPress={() => setPickingDay(true)} />
-        {recipe.sourceUrl ? (
+        {showSource ? (
           <Button
             title={platform === 'site' ? 'Ver receita original' : `Ver no ${PLATFORM_LABEL[platform]}`}
             icon={PLATFORM_ICON[platform]}

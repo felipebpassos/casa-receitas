@@ -91,10 +91,26 @@ export function IconButton({
   );
 }
 
-export function Field({ label, error, hint, children }: { label: string; error?: string | null; hint?: string; children: ReactNode }) {
+export function Field({
+  label,
+  error,
+  hint,
+  optional,
+  children,
+}: {
+  label: string;
+  error?: string | null;
+  hint?: string;
+  /** Mostra "(opcional)" ao lado do rótulo. */
+  optional?: boolean;
+  children: ReactNode;
+}) {
   return (
     <View style={{ gap: spacing.xs }}>
-      <Text style={[styles.label, !!error && { color: colors.danger }]}>{label}</Text>
+      <Text style={[styles.label, !!error && { color: colors.danger }]}>
+        {label}
+        {optional && <Text style={{ textTransform: 'none', fontWeight: '400' }}> (opcional)</Text>}
+      </Text>
       {children}
       {error ? <FieldError message={error} /> : hint ? <Text style={styles.muted}>{hint}</Text> : null}
     </View>

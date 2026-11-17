@@ -28,7 +28,7 @@ function DialogCard({ onClose, onSelect }: { onClose: () => void; onSelect: (kin
           accessibilityViewIsModal
           style={[s.card, { opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }] }]}
         >
-          <Text style={s.title}>O que você quer cadastrar?</Text>
+          <Text style={s.title}>O que deseja criar?</Text>
           {(['RECIPE', 'PREP'] as const).map((kind) => (
             <Option key={kind} kind={kind} onPress={() => onSelect(kind)} />
           ))}

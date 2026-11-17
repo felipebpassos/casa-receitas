@@ -90,7 +90,7 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       <View>
         <Text style={[ui.label, s.sectionLabel]}>Atalhos</Text>
         <View style={s.menu}>
-          <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.push('/recipe/form')} />
+          <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.push('/recipe/new')} />
           <MenuRow icon="person-circle-outline" title="Meu perfil público" subtitle="O que outras pessoas veem de você" onPress={openPublicProfile} />
           <MenuRow icon="book-outline" title="Meu caderno" subtitle="Suas receitas e as que você salvou" onPress={() => router.navigate('/')} />
           <MenuRow icon="compass-outline" title="Explorar receitas" subtitle="Veja o que outras pessoas publicaram" onPress={() => router.navigate({ pathname: '/', params: { tab: 'explore' } })} />

@@ -95,7 +95,7 @@ export const recipeSchema = yup.object({
     .string()
     .trim()
     .default('')
-    .test('source', 'Confira o link do vídeo ou da receita original.', (v) => !v || !!parseSource(v)),
+    .test('source', 'Confira o link da receita.', (v) => !v || !!parseSource(v)),
   items: yup.array().of(recipeItemSchema).required().min(1, 'Adicione pelo menos um ingrediente.'),
 });
 
