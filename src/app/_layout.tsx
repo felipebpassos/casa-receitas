@@ -12,6 +12,14 @@ import { Button, styles } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthProvider';
 import { DataProvider, useData } from '@/context/DataProvider';
 
+/** Telas apresentadas como folha (ver `Sheet`): sem cabeçalho nem animação nativa, fundo transparente. */
+const SHEET_OPTIONS = {
+  presentation: 'transparentModal',
+  animation: 'none',
+  headerShown: false,
+  contentStyle: { backgroundColor: 'transparent' },
+} as const;
+
 // Segura a splash até as fontes carregarem.
 SplashScreen.preventAutoHideAsync();
 
@@ -64,13 +72,10 @@ function Gate() {
       }}
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="recipe/[id]" options={{ title: 'Receita' }} />
-      <Stack.Screen name="recipe/form" options={{ title: 'Receita', presentation: 'modal' }} />
-      {/* Cadastro: a folha anima por conta própria, por cima da tela anterior. */}
-      <Stack.Screen
-        name="recipe/new"
-        options={{ presentation: 'transparentModal', animation: 'none', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }}
-      />
+      {/* Receita (ver, cadastrar, editar): folhas que animam por conta própria, por cima da tela anterior. */}
+      <Stack.Screen name="recipe/[id]" options={SHEET_OPTIONS} />
+      <Stack.Screen name="recipe/form" options={SHEET_OPTIONS} />
+      <Stack.Screen name="recipe/new" options={SHEET_OPTIONS} />
       <Stack.Screen name="user/[id]" options={{ title: 'Perfil' }} />
       <Stack.Screen name="people" options={{ title: 'Buscar amigos', headerTitleAlign: 'left' }} />
       <Stack.Screen name="account" options={{ title: 'Conta', presentation: 'modal' }} />

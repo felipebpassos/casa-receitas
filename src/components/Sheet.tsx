@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useState, type ReactNode, type Ref } from 'react';
+import { router } from 'expo-router';
+import { useEffect, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
   Animated,
   Easing,
@@ -11,6 +12,7 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type GestureResponderEvent,
   type ScrollViewInstance,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,69 +22,127 @@ import { colors, fonts, radius, spacing } from './theme';
 
 const useNativeDriver = Platform.OS !== 'web';
 
-/** Animação de entrada/saída da folha. `open()` ao montar; `close(depois)` antes de sair da tela. */
-export function useSheetAnimation() {
+/**
+ * Animação de entrada/saída da folha: sobe ao montar; `close(depois)` desce e então chama `depois`.
+ * `dismiss()` desce e sai da tela (volta, ou vai para o início se não houver para onde voltar).
+ */
+export type SheetControls = ReturnType<typeof useSheet>;
+
+export function useSheet() {
   const [anim] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    Animated.spring(anim, { toValue: 1, useNativeDriver, friction: 10, tension: 70 }).start();
+  }, [anim]);
+  const close = (then?: () => void) =>
+    Animated.timing(anim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver }).start(() => then?.());
   return {
     anim,
-    open: () => Animated.spring(anim, { toValue: 1, useNativeDriver, friction: 10, tension: 70 }).start(),
-    close: (then?: () => void) =>
-      Animated.timing(anim, { toValue: 0, duration: 220, easing: Easing.in(Easing.cubic), useNativeDriver }).start(() => then?.()),
+    close,
+    dismiss: () => close(() => (router.canGoBack() ? router.back() : router.replace('/'))),
   };
 }
 
+/** Botão redondo do cabeçalho da folha (mesmo visual do fechar). */
+export function SheetButton({
+  icon,
+  label,
+  onPress,
+  active,
+  disabled,
+  children,
+}: {
+  icon?: ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: (e: GestureResponderEvent) => void;
+  active?: boolean;
+  disabled?: boolean;
+  /** Conteúdo no lugar do ícone (ex.: carregando). */
+  children?: ReactNode;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!active, disabled: !!disabled }}
+      style={({ pressed }) => [
+        s.round,
+        active && { backgroundColor: colors.primaryLight, borderColor: colors.primaryLight },
+        pressed && { transform: [{ scale: 0.92 }], backgroundColor: colors.surface },
+      ]}
+    >
+      {children ?? (icon ? <Ionicons name={icon} size={20} color={active ? colors.primary : colors.text} /> : null)}
+    </Pressable>
+  );
+}
+
 /**
- * Folha que sobe de baixo, com cabeçalho próprio (voltar/fechar), transição entre etapas
- * e um "tremidinho" quando algo precisa ser corrigido.
+ * Folha que sobe de baixo, com cabeçalho próprio (ícone do tipo, título, ações e fechar).
+ * Extras opcionais para o cadastro em etapas: ícone que "pula" ao abrir, transição entre
+ * etapas e um "tremidinho" quando algo precisa ser corrigido.
  */
-export function WizardSheet({
+export function Sheet({
   anim,
   kind,
   title,
-  step,
-  direction,
-  shakeSignal,
-  onBack,
   onClose,
-  scrollRef,
+  onBack,
+  headerRight,
   footer,
   overlay,
+  scrollRef,
+  animateIcon,
+  step = 0,
+  direction = 1,
+  shakeSignal = 0,
   children,
 }: {
   anim: Animated.Value;
-  kind: RecipeKind;
+  /** Tipo da receita: ícone do cabeçalho e cor das bolhas. Sem tipo, sem ícone. */
+  kind?: RecipeKind;
   title: string;
-  /** Muda a cada etapa: dispara a transição do conteúdo. */
-  step: number;
-  /** 1 = avançando (entra pela direita), -1 = voltando. */
-  direction: 1 | -1;
-  /** Incrementar para sacudir o conteúdo (erro de validação). */
-  shakeSignal: number;
-  onBack?: () => void;
   onClose: () => void;
-  scrollRef?: Ref<ScrollViewInstance>;
-  footer: ReactNode;
+  /** Mostra a seta de voltar no lugar do ícone do tipo. */
+  onBack?: () => void;
+  /** Ações à direita, antes do fechar. */
+  headerRight?: ReactNode;
+  footer?: ReactNode;
   /** Camada por cima de tudo (ex.: comemoração ao salvar). */
   overlay?: ReactNode;
+  scrollRef?: Ref<ScrollViewInstance>;
+  /** Ícone do tipo "pula" e balança ao abrir. */
+  animateIcon?: boolean;
+  /** Muda a cada etapa: dispara a transição do conteúdo. */
+  step?: number;
+  /** 1 = avançando (entra pela direita), -1 = voltando. */
+  direction?: 1 | -1;
+  /** Incrementar para sacudir o conteúdo (erro de validação). */
+  shakeSignal?: number;
   children: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const k = KIND[kind];
+  const k = kind ? KIND[kind] : null;
   const [stepAnim] = useState(() => new Animated.Value(1));
   const [shake] = useState(() => new Animated.Value(0));
-  // Ícone do tipo no cabeçalho: "pula" e balança só ao abrir a folha (não ao voltar para a etapa 1).
-  const [iconPop] = useState(() => new Animated.Value(0));
+  // Valores guardados: ao voltar para a etapa 1 o ícone remonta, mas não anima de novo.
+  const [iconPop] = useState(() => new Animated.Value(animateIcon ? 0 : 1));
   const [iconWiggle] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
+    if (!animateIcon) return;
     Animated.sequence([
       Animated.spring(iconPop, { toValue: 1, friction: 5, tension: 110, delay: 220, useNativeDriver }),
       Animated.sequence([1, -1, 0.5, 0].map((v) => Animated.timing(iconWiggle, { toValue: v, duration: 90, useNativeDriver }))),
     ]).start();
-  }, [iconPop, iconWiggle]);
+    // Só ao abrir.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
+    if (!step) return;
     stepAnim.setValue(0);
     Animated.spring(stepAnim, { toValue: 1, useNativeDriver, friction: 9, tension: 80 }).start();
   }, [step, stepAnim]);
@@ -108,6 +168,8 @@ export function WizardSheet({
     opacity: stepAnim,
     transform: [{ translateY: stepAnim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }],
   };
+  const blobLight = k?.background ?? colors.surface;
+  const blobDark = k?.color ?? colors.muted;
 
   return (
     <View style={s.root}>
@@ -118,15 +180,15 @@ export function WizardSheet({
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.kav} pointerEvents="box-none">
         <Animated.View accessibilityViewIsModal style={[s.sheet, { height: sheetHeight, transform: [{ translateY }] }]}>
           {/* Bolhas decorativas na cor do tipo */}
-          <View pointerEvents="none" style={[s.blob, { backgroundColor: k.background, width: 180, height: 180, top: -90, right: -50 }]} />
-          <View pointerEvents="none" style={[s.blob, { backgroundColor: k.background, width: 70, height: 70, top: 28, right: 110, opacity: 0.6 }]} />
-          <View pointerEvents="none" style={[s.blob, { backgroundColor: k.color, width: 10, height: 10, top: 22, right: 86, opacity: 0.35 }]} />
+          <View pointerEvents="none" style={[s.blob, { backgroundColor: blobLight, width: 180, height: 180, top: -90, right: -50 }]} />
+          <View pointerEvents="none" style={[s.blob, { backgroundColor: blobLight, width: 70, height: 70, top: 28, right: 110, opacity: 0.6 }]} />
+          <View pointerEvents="none" style={[s.blob, { backgroundColor: blobDark, width: 10, height: 10, top: 22, right: 86, opacity: 0.35 }]} />
 
           <View style={s.handle} />
           <View style={s.header}>
             {onBack ? (
-              <RoundButton icon="arrow-back" label="Voltar" onPress={onBack} />
-            ) : (
+              <SheetButton icon="arrow-back" label="Voltar" onPress={onBack} />
+            ) : kind ? (
               <Animated.View
                 style={{
                   transform: [{ scale: iconPop }, { rotate: iconWiggle.interpolate({ inputRange: [-1, 1], outputRange: ['-12deg', '12deg'] }) }],
@@ -134,43 +196,30 @@ export function WizardSheet({
               >
                 <KindIcon kind={kind} size={40} />
               </Animated.View>
-            )}
+            ) : null}
             <Animated.View style={[{ flex: 1 }, titleStyle]}>
-              <Text style={s.title} numberOfLines={1}>
+              <Text style={s.title} numberOfLines={2}>
                 {title}
               </Text>
             </Animated.View>
-            <RoundButton icon="close" label="Fechar" onPress={onClose} />
+            {headerRight}
+            <SheetButton icon="close" label="Fechar" onPress={onClose} />
           </View>
 
           <ScrollView
             ref={scrollRef}
             style={{ flex: 1 }}
-            contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl }}
+            contentContainerStyle={{ flexGrow: 1, padding: spacing.lg, paddingBottom: spacing.xl }}
             keyboardShouldPersistTaps="handled"
           >
-            <Animated.View style={[{ gap: spacing.lg }, stepStyle]}>{children}</Animated.View>
+            <Animated.View style={[{ flexGrow: 1, gap: spacing.lg }, stepStyle]}>{children}</Animated.View>
           </ScrollView>
 
-          <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>{footer}</View>
+          {footer ? <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>{footer}</View> : null}
           {overlay}
         </Animated.View>
       </KeyboardAvoidingView>
     </View>
-  );
-}
-
-function RoundButton({ icon, label, onPress }: { icon: 'arrow-back' | 'close'; label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [s.round, pressed && { transform: [{ scale: 0.92 }], backgroundColor: colors.surface }]}
-    >
-      <Ionicons name={icon} size={20} color={colors.text} />
-    </Pressable>
   );
 }
 
@@ -197,12 +246,12 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
   },
-  title: { fontFamily: fonts.serifSemiBold, fontSize: 21, color: colors.text },
+  title: { fontFamily: fonts.serifSemiBold, fontSize: 21, color: colors.text, marginLeft: spacing.xs },
   round: {
     width: 40,
     height: 40,

@@ -42,6 +42,12 @@ export function formatShort(iso: string): string {
   return `${d}/${m}`;
 }
 
+/** Data e hora (ISO, ex.: `created_at`) como "dd/mm/aaaa", no fuso do aparelho. */
+export function formatDate(timestamp: string): string {
+  const [y, m, d] = toISODate(new Date(timestamp)).split('-');
+  return `${d}/${m}/${y}`;
+}
+
 export function weekdayName(iso: string): string {
   return WEEKDAYS[parseISODate(iso).getDay()];
 }

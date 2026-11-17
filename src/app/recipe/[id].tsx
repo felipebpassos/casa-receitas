@@ -1,19 +1,20 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { confirm } from '@/components/ConfirmDialog';
 import { DayPicker } from '@/components/DayPicker';
 import { DropdownMenu } from '@/components/DropdownMenu';
 import { ModalScreen } from '@/components/ModalScreen';
 import { KIND, KindIcon } from '@/components/RecipeKind';
 import { RichText } from '@/components/RichText';
-import { colors, fonts, spacing } from '@/components/theme';
+import { Sheet, SheetButton, useSheet, type SheetControls } from '@/components/Sheet';
+import { colors, spacing } from '@/components/theme';
 import { ErrorView } from '@/components/ErrorState';
 import { toast } from '@/components/Toast';
-import { BottomBar, Button, EmptyState, Loading, styles } from '@/components/ui';
+import { Button, EmptyState, Loading, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
-import { formatShort, weekdayName } from '@/lib/dates';
+import { formatDate, formatShort, weekdayName } from '@/lib/dates';
 import { UserFacingError } from '@/lib/errors';
 import { getPublicRecipeTree } from '@/lib/publicLibrary';
 import { parseRichText } from '@/lib/richText';
@@ -24,12 +25,14 @@ import type { PublicRecipeTree, Recipe, RecipeVisibility } from '@/lib/types';
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { getRecipe } = useData();
+  // A folha é da tela: não reanima quando a receita pública termina de carregar.
+  const sheet = useSheet();
   const own = getRecipe(id);
-  return own ? <RecipeView recipe={own} /> : <PublicRecipeLoader id={id} />;
+  return own ? <RecipeView recipe={own} sheet={sheet} /> : <PublicRecipeLoader id={id} sheet={sheet} />;
 }
 
 /** Receita que não está na coleção: busca na biblioteca pública. */
-function PublicRecipeLoader({ id }: { id: string }) {
+function PublicRecipeLoader({ id, sheet }: { id: string; sheet: SheetControls }) {
   const [tree, setTree] = useState<PublicRecipeTree | null | undefined>(undefined);
   const [error, setError] = useState<unknown>(null);
   const [retrying, setRetrying] = useState(false);
@@ -50,26 +53,30 @@ function PublicRecipeLoader({ id }: { id: string }) {
     };
   }, [id, tick]);
 
-  if (error) {
-    return (
-      <ErrorView
-        error={error}
-        context={{ title: 'Não foi possível abrir a receita' }}
-        retrying={retrying}
-        onRetry={() => {
-          setRetrying(true);
-          setTick((t) => t + 1);
-        }}
-        actions={router.canGoBack() ? <Button title="Voltar" variant="ghost" onPress={() => router.back()} /> : null}
-      />
-    );
-  }
-  if (tree === undefined) return <Loading />;
-  if (tree === null) return <EmptyState icon="lock-closed-outline" title="Receita não encontrada" subtitle="Ela pode ter sido excluída ou deixado de ser pública." />;
-  return <RecipeView recipe={tree.root} tree={tree} />;
+  if (tree) return <RecipeView recipe={tree.root} tree={tree} sheet={sheet} />;
+  return (
+    <Sheet anim={sheet.anim} title="Receita" onClose={sheet.dismiss}>
+      {error ? (
+        <ErrorView
+          error={error}
+          context={{ title: 'Não foi possível abrir a receita' }}
+          retrying={retrying}
+          onRetry={() => {
+            setRetrying(true);
+            setTick((t) => t + 1);
+          }}
+          actions={<Button title="Voltar" variant="ghost" onPress={sheet.dismiss} />}
+        />
+      ) : tree === undefined ? (
+        <Loading />
+      ) : (
+        <EmptyState icon="lock-closed-outline" title="Receita não encontrada" subtitle="Ela pode ter sido excluída ou deixado de ser pública." />
+      )}
+    </Sheet>
+  );
 }
 
-function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree }) {
+function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicRecipeTree; sheet: SheetControls }) {
   const data = useData();
   const [pickingDay, setPickingDay] = useState(false);
   const [showingIngredients, setShowingIngredients] = useState(false);
@@ -124,7 +131,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
       onConfirm: async () => {
         if (!(await data.deleteRecipe(recipe.id))) return;
         toast.success('Receita excluída', recipe.name);
-        router.back();
+        sheet.dismiss();
       },
     });
 
@@ -169,46 +176,65 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
   const openSource = () =>
     Linking.openURL(recipe.sourceUrl!).catch(() => toast.error(new UserFacingError('Não foi possível abrir este link.', 'Link inválido')));
 
+  const headerRight = isOwn ? (
+    <DropdownMenu
+      items={[
+        {
+          label: 'Editar',
+          icon: 'create-outline',
+          onPress: () => router.push({ pathname: '/recipe/form', params: { id: recipe.id } }),
+        },
+        { label: 'Excluir', icon: 'trash-outline', destructive: true, onPress: confirmDelete },
+      ]}
+      trigger={(open) => <SheetButton icon="ellipsis-vertical" label="Mais opções" onPress={open} />}
+    />
+  ) : (
+    <SheetButton
+      icon={isSaved ? 'bookmark' : 'bookmark-outline'}
+      label={isSaved ? 'Remover do caderno' : 'Salvar no caderno'}
+      active={isSaved}
+      disabled={busy}
+      onPress={isSaved ? confirmRemove : save}
+    >
+      {busy ? <ActivityIndicator color={colors.primary} size="small" /> : undefined}
+    </SheetButton>
+  );
+
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: recipe.name,
-          headerTitleAlign: 'left',
-          headerTitle: () => (
-            <Text style={local.headerName} numberOfLines={1}>
-              {recipe.name}
-            </Text>
-          ),
-          headerRight: () =>
-            isOwn ? (
-              <DropdownMenu
-                items={[
-                  {
-                    label: 'Editar receita',
-                    icon: 'create-outline',
-                    onPress: () => router.push({ pathname: '/recipe/form', params: { id: recipe.id } }),
-                  },
-                  { label: 'Excluir receita', icon: 'trash-outline', destructive: true, onPress: confirmDelete },
-                ]}
-                trigger={(open) => <HeaderAction icon="ellipsis-vertical" label="Mais opções" onPress={open} />}
+      <Sheet
+        anim={sheet.anim}
+        kind={recipe.kind}
+        title={recipe.name}
+        onClose={sheet.dismiss}
+        headerRight={headerRight}
+        footer={
+          <>
+            <Button title="Adicionar à semana" icon="calendar-outline" loading={busy} onPress={() => setPickingDay(true)} />
+            {showSource ? (
+              <Button
+                title={platform === 'site' ? 'Ver receita original' : `Ver no ${PLATFORM_LABEL[platform]}`}
+                icon={PLATFORM_ICON[platform]}
+                variant="ghost"
+                onPress={openSource}
               />
-            ) : (
-              <HeaderAction
-                icon={isSaved ? 'bookmark' : 'bookmark-outline'}
-                label={isSaved ? 'Remover do caderno' : 'Salvar no caderno'}
-                active={isSaved}
-                loading={busy}
-                onPress={isSaved ? confirmRemove : save}
-              />
-            ),
-        }}
-      />
-      {/* Divisória entre o header e o conteúdo */}
-      <View style={styles.separator} />
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }}>
-        <RecipeMeta author={isOwn ? null : author} authorId={authorId} visibility={visibility} />
-        {recipe.description ? <Text style={styles.body}>{recipe.description}</Text> : null}
+            ) : null}
+          </>
+        }
+      >
+        <RecipeMeta
+          author={isOwn ? null : author}
+          authorId={authorId}
+          visibility={visibility}
+          date={`Em ${formatDate(recipe.createdAt)}`}
+        />
+        {/* Divisória entre as informações (autor, data, visibilidade) e o conteúdo */}
+        <View style={styles.separator} />
+        {recipe.description ? (
+          <Section title="Descrição">
+            <Text style={styles.body}>{recipe.description}</Text>
+          </Section>
+        ) : null}
 
         {/* Ingredientes: botão que abre o modal com os da receita e, em seguida, os preparos (clicáveis) */}
         {recipe.items.length > 0 && (
@@ -275,20 +301,7 @@ function RecipeView({ recipe, tree }: { recipe: Recipe; tree?: PublicRecipeTree 
             </View>
           </Section>
         )}
-      </ScrollView>
-
-      {/* Ações principais, sempre à mão */}
-      <BottomBar>
-        <Button title="Adicionar à semana" icon="calendar-outline" loading={busy} onPress={() => setPickingDay(true)} />
-        {showSource ? (
-          <Button
-            title={platform === 'site' ? 'Ver receita original' : `Ver no ${PLATFORM_LABEL[platform]}`}
-            icon={PLATFORM_ICON[platform]}
-            variant="ghost"
-            onPress={openSource}
-          />
-        ) : null}
-      </BottomBar>
+      </Sheet>
 
       <DayPicker visible={pickingDay} title={`Planejar "${recipe.name}"`} onClose={() => setPickingDay(false)} onSelect={addToWeek} />
     </>
@@ -301,14 +314,24 @@ const VISIBILITY: Record<RecipeVisibility, { icon: ComponentProps<typeof Ionicon
 };
 
 /**
- * Linha de informações no topo do conteúdo: autoria ("Minha" ou "Por fulano", que abre
- * o perfil público) e visibilidade (Privada / Pública).
+ * Linha de informações no topo do conteúdo: autoria ("Criado por mim" ou "Criado por fulano", que abre
+ * o perfil público), data em que entrou no caderno e visibilidade (Privada / Pública).
  */
-function RecipeMeta({ author, authorId, visibility }: { author: string | null; authorId: string | null; visibility: RecipeVisibility }) {
+function RecipeMeta({
+  author,
+  authorId,
+  visibility,
+  date,
+}: {
+  author: string | null;
+  authorId: string | null;
+  visibility: RecipeVisibility;
+  date: string;
+}) {
   const v = VISIBILITY[visibility];
-  const authorLabel = author ? `Por ${author}` : 'Minha';
+  const authorLabel = `Criado por ${author ?? 'mim'}`;
   return (
-    <View style={[styles.row, { gap: spacing.lg }]}>
+    <View style={[styles.row, { flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.xs }]}>
       {authorId ? (
         <Pressable
           onPress={() => router.push({ pathname: '/user/[id]', params: { id: authorId } })}
@@ -318,11 +341,11 @@ function RecipeMeta({ author, authorId, visibility }: { author: string | null; a
           style={({ pressed }) => [styles.row, local.meta, { flexShrink: 1 }, pressed && { opacity: 0.6 }]}
         >
           <Ionicons name="person-outline" size={16} color={colors.muted} />
-          {/* Só o nome tem cara de link; "Por" e o ícone ficam neutros. */}
+          {/* Só o nome tem cara de link; "Criado por" e o ícone ficam neutros. */}
           <Text style={local.metaText} numberOfLines={1}>
             {author ? (
               <>
-                Por <Text style={{ color: colors.primary }}>{author}</Text>
+                Criado por <Text style={{ color: colors.primary }}>{author}</Text>
               </>
             ) : (
               authorLabel
@@ -337,44 +360,15 @@ function RecipeMeta({ author, authorId, visibility }: { author: string | null; a
           </Text>
         </View>
       )}
+      <View style={[styles.row, local.meta]} accessibilityLabel={date}>
+        <Ionicons name="calendar-outline" size={16} color={colors.muted} />
+        <Text style={local.metaText}>{date}</Text>
+      </View>
       <View style={[styles.row, local.meta]}>
         <Ionicons name={v.icon} size={16} color={v.color} />
         <Text style={[local.metaText, { color: v.color }]}>{v.label}</Text>
       </View>
     </View>
-  );
-}
-
-/** Botão redondo do header, com área de toque confortável e afastado da borda. */
-function HeaderAction({
-  icon,
-  label,
-  onPress,
-  active,
-  loading,
-}: {
-  icon: ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  onPress: (e: GestureResponderEvent) => void;
-  active?: boolean;
-  loading?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={loading}
-      hitSlop={4}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: !!active, busy: !!loading }}
-      style={({ pressed }) => [
-        local.headerAction,
-        active && { backgroundColor: colors.primaryLight, borderColor: colors.primaryLight },
-        pressed && { opacity: 0.6 },
-      ]}
-    >
-      {loading ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name={icon} size={22} color={active ? colors.primary : colors.text} />}
-    </Pressable>
   );
 }
 
@@ -405,7 +399,6 @@ function IngredientsButton({ count, onPress }: { count: number; onPress: () => v
 }
 
 const local = StyleSheet.create({
-  headerName: { fontSize: 21, fontFamily: fonts.serifSemiBold, color: colors.text },
   meta: { gap: spacing.xs },
   metaText: { fontSize: 14, color: colors.muted, fontWeight: '500' },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accent },
@@ -420,15 +413,4 @@ const local = StyleSheet.create({
     backgroundColor: colors.primaryLight,
   },
   countText: { fontSize: 14, fontWeight: '700', color: colors.primary },
-  headerAction: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    marginRight: spacing.sm,
-  },
 });

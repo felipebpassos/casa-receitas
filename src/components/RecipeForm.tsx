@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, Stack, usePreventRemove } from 'expo-router';
+import { router, usePreventRemove } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
+import { Pressable, StyleSheet, Text, View, type ScrollViewInstance } from 'react-native';
 import { useData } from '@/context/DataProvider';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { haptic } from '@/lib/haptics';
@@ -17,10 +17,10 @@ import { KIND, KindIcon } from './RecipeKind';
 import { RecipePreview } from './RecipePreview';
 import { RichTextField } from './RichTextField';
 import { SaveCelebration } from './SaveCelebration';
-import { colors, fonts, spacing } from './theme';
+import { colors, spacing } from './theme';
 import { toast } from './Toast';
-import { BottomBar, Button, ChipSelect, Field, FieldError, IconButton, Input, styles, Toggle } from './ui';
-import { useSheetAnimation, WizardSheet } from './WizardSheet';
+import { Button, ChipSelect, Field, FieldError, IconButton, Input, styles, Toggle } from './ui';
+import { Sheet, useSheet } from './Sheet';
 
 
 type Row = {
@@ -89,13 +89,7 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
   // Texto inicial do editor ao (re)montar a etapa 2: o que já foi escrito até então.
   const [editorSeed, setEditorSeed] = useState(initialPreparation);
   const scrollRef = useRef<ScrollViewInstance>(null);
-  const sheet = useSheetAnimation();
-
-  useEffect(() => {
-    if (!isEdit) sheet.open();
-    // Só na montagem.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const sheet = useSheet();
 
   // Cadastro: o "publicar" começa com a última escolha feita (privado se nunca cadastrou).
   const touchedPublic = useRef(false);
@@ -205,7 +199,7 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
 
     if (isEdit) {
       toast.success(published ? (isPrep ? 'Preparo publicado' : 'Receita publicada') : 'Alterações salvas', published ? publishedText : undefined);
-      router.back();
+      sheet.dismiss();
       return;
     }
     if (canPublish) saveLastPublish(isPublic);
@@ -237,7 +231,10 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
   // Saindo: o bloqueio acima já foi desligado (exit != null), então navega.
   useEffect(() => {
     if (!exit) return;
-    if (exit === 'back') router.back();
+    if (exit === 'back') {
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
+    }
     else router.replace({ pathname: '/recipe/[id]', params: { id: exit.recipeId } });
   }, [exit]);
 
@@ -385,24 +382,18 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
   if (isEdit) {
     return (
       <>
-        <Stack.Screen
-          options={{
-            title: meta.editTitle,
-            headerTitleAlign: 'left',
-            headerTitleStyle: { fontFamily: fonts.serifSemiBold, fontSize: 21 },
-          }}
-        />
-        {/* Divisória entre o header e o conteúdo */}
-        <View style={styles.separator} />
-        <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl }} keyboardShouldPersistTaps="handled">
+        <Sheet
+          anim={sheet.anim}
+          kind={kind}
+          title={meta.editTitle}
+          onClose={sheet.dismiss}
+          footer={<Button title="Salvar alterações" icon="checkmark" onPress={save} loading={saving} />}
+        >
           {nameFields}
           {ingredientFields}
           {prepFields}
           {visibilitySwitch}
-        </ScrollView>
-        <BottomBar>
-          <Button title="Salvar alterações" icon="checkmark" onPress={save} loading={saving} />
-        </BottomBar>
+        </Sheet>
         {itemPicker}
       </>
     );
@@ -410,9 +401,10 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
 
   return (
     <>
-      <WizardSheet
+      <Sheet
         anim={sheet.anim}
         kind={kind}
+        animateIcon
         title={step === 1 ? meta.newTitle : `${step}. ${STEP_TITLE[step]}`}
         step={step}
         direction={direction}
@@ -459,7 +451,7 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
             </View>
           </>
         )}
-      </WizardSheet>
+      </Sheet>
       {itemPicker}
     </>
   );
