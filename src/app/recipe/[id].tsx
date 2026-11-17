@@ -160,7 +160,7 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
       },
     });
 
-  const author = isPublicView ? (tree.authorName ?? 'usuário') : (recipe.originAuthorName ?? 'usuário');
+  const author = (isPublicView ? tree.authorName : recipe.originAuthorName) ?? 'usuário';
   const isOwn = !isPublicView && !isSavedCopy;
   // Receitas de outras pessoas só abrem se forem públicas. As próprias: como o dono escolheu.
   // (Estar na busca do Explorar é decisão interna e não aparece aqui.)

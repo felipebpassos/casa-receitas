@@ -10,7 +10,7 @@ import { useAuth } from '@/context/AuthProvider';
 import { searchPublicProfiles, type PublicPersonSummary } from '@/lib/publicLibrary';
 
 /**
- * Buscar amigos: a pessoa digita o nome e toca em Pesquisar.
+ * Buscar amigos: a pessoa digita o nome de usuário exato e toca em Pesquisar.
  * Nada aparece antes da primeira pesquisa (não é uma lista de todo mundo).
  */
 export default function PeopleSearchScreen() {
@@ -46,7 +46,7 @@ export default function PeopleSearchScreen() {
   if (loading) content = <Loading />;
   else if (error) content = <ErrorView error={error} context={{ title: 'Não foi possível buscar' }} onRetry={search} />;
   else if (results === undefined)
-    content = <EmptyState icon="people-outline" title="Encontre seus amigos" subtitle="Digite o nome de quem você procura e toque em Pesquisar." />;
+    content = <EmptyState icon="people-outline" title="Encontre seus amigos" subtitle="Digite o nome de usuário exato de quem você procura (ex.: maria.silva) e toque em Pesquisar." />;
   else
     content = (
       <FlatList
@@ -55,7 +55,7 @@ export default function PeopleSearchScreen() {
         contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xl, gap: spacing.sm }}
         keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => <PersonListItem person={item} />}
-        ListEmptyComponent={<EmptyState icon="search" title="Ninguém encontrado" subtitle={`Nenhuma pessoa com "${searched}" no nome.`} />}
+        ListEmptyComponent={<EmptyState icon="search" title="Ninguém encontrado" subtitle={`Ninguém com o usuário "${searched.replace(/^@+/, '')}". Confira se digitou o nome exato.`} />}
       />
     );
 
@@ -63,7 +63,7 @@ export default function PeopleSearchScreen() {
     <View style={styles.screen}>
       <View style={styles.separator} />
       <View style={[styles.row, { gap: spacing.sm, padding: spacing.lg }]}>
-        <SearchBar value={text} onChangeText={setText} onSubmit={search} placeholder="Nome da pessoa" autoFocus style={{ flex: 1 }} />
+        <SearchBar value={text} onChangeText={setText} onSubmit={search} placeholder="Nome de usuário" autoCapitalize="none" autoFocus style={{ flex: 1 }} />
         <Button title="Pesquisar" onPress={search} disabled={!term} loading={loading} style={{ borderRadius: radius.pill, paddingVertical: 10 }} />
       </View>
       {content}

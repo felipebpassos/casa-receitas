@@ -59,8 +59,28 @@ const password = yup.string().required('Informe sua senha.').min(6, 'A senha pre
 
 export const signInSchema = yup.object({ email, password });
 
+/** Mesma regra do banco (public.is_valid_username). */
+export const USERNAME_RE = /^[a-z][a-z0-9]*([._][a-z0-9]+)*$/;
+
+/** " @Ana_B " → "ana_b". */
+export function normalizeUsername(s: string | null | undefined): string {
+  return (s ?? '').trim().replace(/^@+/, '').toLowerCase();
+}
+
+const username = yup
+  .string()
+  .transform((v) => normalizeUsername(v))
+  .required('Escolha um nome de usuário.')
+  .min(3, 'Use pelo menos 3 caracteres.')
+  .max(20, 'Use no máximo 20 caracteres.')
+  .test('start', 'Comece com uma letra.', (v) => !v || /^[a-z]/.test(v))
+  .test('chars', 'Use só letras, números, ponto e "_".', (v) => !v || /^[a-z0-9._]+$/.test(v))
+  .test('separators', 'Não termine nem repita ponto ou "_".', (v) => !v || USERNAME_RE.test(v));
+
+export const usernameSchema = yup.object({ username });
+
 export const signUpSchema = yup.object({
-  name: yup.string().trim().max(60),
+  username,
   email,
   password,
 });

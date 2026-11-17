@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { extraSchema, parseQuantity, recipeSchema, signInSchema, signUpSchema, validate } from '../validation.ts';
+import { extraSchema, parseQuantity, recipeSchema, signInSchema, signUpSchema, usernameSchema, validate } from '../validation.ts';
 
 const ingredient = (quantity: string, unit: string | null = 'g') => ({ name: 'Farinha', ingredientId: 'i1', subRecipeId: null, quantity, unit });
 const subRecipe = (quantity: string) => ({ name: 'Molho', ingredientId: null, subRecipeId: 'r1', quantity, unit: null });
@@ -51,9 +51,34 @@ test('login e cadastro', () => {
   const empty = validate(signInSchema, { email: '', password: '' });
   assert.equal(empty.errors.email, 'Informe seu e-mail.');
 
-  const ok = validate(signUpSchema, { name: ' Ana ', email: ' ana@x.com ', password: '123456' });
+  const ok = validate(signUpSchema, { username: ' @Ana ', email: ' ana@x.com ', password: '123456' });
   assert.equal(ok.ok, true);
-  if (ok.ok) assert.equal(ok.value.email, 'ana@x.com');
+  if (ok.ok) {
+    assert.equal(ok.value.email, 'ana@x.com');
+    assert.equal(ok.value.username, 'ana');
+  }
+
+  const noUser = validate(signUpSchema, { username: '', email: 'ana@x.com', password: '123456' });
+  assert.equal(noUser.ok ? null : noUser.errors.username, 'Escolha um nome de usuário.');
+});
+
+test('nome de usuário: regras de nickname', () => {
+  const err = (username: string) => {
+    const r = validate(usernameSchema, { username });
+    return r.ok ? null : r.errors.username;
+  };
+  for (const u of ['ana', 'Ana_B', 'maria.silva2', '@joao', 'a1b', 'a'.repeat(20)]) assert.equal(err(u), null, u);
+  assert.match(err('ab')!, /3 caracteres/);
+  assert.match(err('a'.repeat(21))!, /20 caracteres/);
+  assert.match(err('1ana')!, /letra/);
+  assert.match(err('_ana')!, /letra/);
+  assert.match(err('ana!')!, /letras, números/);
+  assert.match(err('joão')!, /letras, números/);
+  assert.match(err('ana.')!, /repita/);
+  assert.match(err('a..b')!, /repita/);
+  assert.match(err('a._b')!, /repita/);
+  const ok = validate(usernameSchema, { username: ' Ana_B ' });
+  assert.ok(ok.ok && ok.value.username === 'ana_b');
 });
 
 test('item extra das compras', () => {

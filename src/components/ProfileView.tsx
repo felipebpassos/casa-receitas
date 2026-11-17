@@ -1,35 +1,31 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { useMemo, type ComponentProps } from 'react';
+import { useMemo, useState, type ComponentProps } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { confirm } from '@/components/ConfirmDialog';
 import { colors, fonts, radius, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
 import { Button, styles as ui } from '@/components/ui';
+import { UsernameDialog } from '@/components/UsernameDialog';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Nome de exibição: o do cadastro, o do Google ou o começo do e-mail. */
-export function userDisplayName(meta: Record<string, unknown> | undefined, email: string | null) {
-  const pick = (k: string) => (typeof meta?.[k] === 'string' && (meta[k] as string).trim()) || null;
-  return pick('display_name') ?? pick('full_name') ?? pick('name') ?? email?.split('@')[0] ?? 'Você';
-}
-
+/** Letra do avatar: a primeira letra do usuário. */
 export function initials(name: string) {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase() || '?';
+  return (name.match(/[a-z0-9]/i)?.[0] ?? '?').toUpperCase();
 }
 
 /** Perfil da pessoa logada: identidade, números do caderno, atalhos e sair. */
 export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
-  const { session, email, signOut } = useAuth();
+  const { session, email, username, signOut } = useAuth();
   const { recipes } = useData();
+  const [editingUsername, setEditingUsername] = useState(false);
   const user = session?.user;
 
-  const name = userDisplayName(user?.user_metadata, email);
+  const name = username ?? '';
   const avatarUrl = (user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture) as string | undefined;
   const memberSince = user?.created_at
     ? new Date(user.created_at).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
@@ -90,6 +86,7 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       <View>
         <Text style={[ui.label, s.sectionLabel]}>Atalhos</Text>
         <View style={s.menu}>
+          <MenuRow icon="person-outline" title="Nome de usuário" subtitle={username ?? 'Como seus amigos te encontram'} onPress={() => setEditingUsername(true)} />
           <MenuRow icon="add-circle-outline" title="Nova receita" subtitle="Anote uma receita no seu caderno" onPress={() => router.push('/recipe/new')} />
           <MenuRow icon="person-circle-outline" title="Meu perfil público" subtitle="O que outras pessoas veem de você" onPress={openPublicProfile} />
           <MenuRow icon="book-outline" title="Meu caderno" subtitle="Suas receitas e as que você salvou" onPress={() => router.navigate('/')} />
@@ -103,6 +100,8 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       <Text style={[ui.muted, { textAlign: 'center' }]}>
         {memberSince ? `Conta criada em ${memberSince} · ` : ''}Versão {Constants.expoConfig?.version ?? '—'}
       </Text>
+
+      {editingUsername && username && <UsernameDialog initial={username} onCancel={() => setEditingUsername(false)} />}
     </ScrollView>
   );
 }

@@ -32,12 +32,17 @@ const ok = (cond, msg, extra) => {
   if (!cond) failures++;
 };
 
-async function user(name) {
+// Contas criadas pelo teste: apagadas no fim (o banco local fica só com as contas reais).
+const created = [];
+const RUN = Date.now().toString(36).slice(-6);
+async function user(name, meta) {
   const c = client();
   const email = `${name}.${Date.now()}@teste.local`;
-  const { data, error } = await c.auth.signUp({ email, password: 'senha123', options: { data: { display_name: name } } });
+  const username = `${name.toLowerCase()}_${RUN}`;
+  const { data, error } = await c.auth.signUp({ email, password: 'senha123', options: { data: meta ?? { username } } });
   if (error) throw error;
-  return { c, id: data.user.id };
+  created.push(data.user.id);
+  return { c, id: data.user.id, username, email };
 }
 
 const recipe = (fields, items) => ({
@@ -58,8 +63,8 @@ const listedOf = async (id) => (await admin.from('recipes').select('listed').eq(
 const cat = await anon.from('ingredients').select('id');
 ok(cat.data?.length >= catalog.length, `catálogo com ${catalog.length}+ itens visível sem login`, cat.error ?? cat.data?.length);
 
-const prof = await A.c.from('profiles').select('display_name').eq('id', A.id).single();
-ok(prof.data?.display_name === 'Ana', 'trigger cria o profile com o nome', prof);
+const prof = await A.c.from('profiles').select('username, username_confirmed').eq('id', A.id).single();
+ok(prof.data?.username === A.username && prof.data?.username_confirmed === true, 'trigger cria o profile com o usuário escolhido', prof);
 
 const ingInsert = await A.c.from('ingredients').insert({ id: randomUUID(), name: 'Tempero da vó', default_unit: 'g' });
 ok(!!ingInsert.error, 'usuário não cria ingrediente (catálogo fechado)', ingInsert.error?.code);
@@ -128,7 +133,8 @@ ok(!rpcList.error && !(await listedOf(lasanha.id)), 'save_recipe ignora listed e
 const selfAdmin = await A.c.from('profiles').update({ is_admin: true }).eq('id', A.id);
 const stillUser = await admin.from('profiles').select('is_admin').eq('id', A.id).single();
 ok(!!selfAdmin.error && stillUser.data?.is_admin === false, 'Ana não se torna admin', selfAdmin.error ?? stillUser.data);
-ok(!(await A.c.from('profiles').update({ display_name: 'Ana' }).eq('id', A.id)).error, 'Ana ainda muda o próprio nome');
+ok(!!(await A.c.from('profiles').update({ is_admin: false }).eq('id', A.id)).error, 'Ana não altera o profile direto');
+ok(!!(await A.c.from('profiles').update({ username: 'hacker' }).eq('id', A.id)).error, 'Ana não altera username direto (só via set_username)');
 
 const priv = await A.c.rpc('save_recipe', { p: { ...molho, visibility: 'PRIVATE' } });
 ok(!!priv.error, 'não deixa tornar privado um preparo usado por receita pública', priv.error?.message);
@@ -143,7 +149,7 @@ ok(s1.data?.some((r) => r.name === 'Molho bolonhesa'), 'busca por ingrediente ac
 const s2 = await anon.rpc('search_public_recipes', { q: 'MOLHO' });
 ok(s2.data?.some((r) => r.name === 'Lasanha'), 'busca pelo nome do preparo acha a lasanha', s2.data?.map((r) => r.name));
 const s3 = await anon.rpc('search_public_recipes', { q: 'lasanha' });
-ok(s3.data?.[0]?.author_name === 'Ana' && Number(s3.data?.[0]?.item_count) === 3, 'resultado traz autor e nº de itens', s3.data);
+ok(s3.data?.[0]?.author_name === A.username && Number(s3.data?.[0]?.item_count) === 3, 'resultado traz autor e nº de itens', s3.data);
 ok(s3.data?.[0]?.kind === 'RECIPE' && s1.data?.find((r) => r.name === 'Molho bolonhesa')?.kind === 'PREP', 'resultado traz o tipo', s3.data);
 const items = await anon.from('recipe_items').select('ingredient_id').eq('recipe_id', molho.id);
 ok(items.data?.length === 2, 'visitante lê os itens do preparo público', items);
@@ -257,6 +263,63 @@ const load = await B.c.from('recipes').select(RECIPE_SELECT).eq('user_id', B.id)
 const pubTree = await anon.from('recipes').select(RECIPE_SELECT).eq('id', lasanha.id).eq('visibility', 'PUBLIC').maybeSingle();
 ok(pubTree.data?.recipe_items?.length === 3, 'visitante carrega a receita pública com itens (como o app)', pubTree.error ?? pubTree.data);
 ok(load.data?.length === 2 && load.data.every((r) => r.recipe_items.length > 0), 'Beto carrega a coleção com itens', load.error ?? load.data);
+
+// ------------------------------------------------------------ nome de usuário
+const unameOf = async (id) => (await admin.from('profiles').select('username, username_confirmed').eq('id', id).single()).data;
+// Sem usuário (como no Google): gera do e-mail e pede confirmação; o mesmo começo de e-mail ganha número.
+// Como no Google (sem username nos metadados). E-mail com maiúscula e hífen: hífen vira ponto.
+const googleUser = async (domain) => {
+  const c = client();
+  const { data, error } = await c.auth.signUp({ email: `Ze.Go-${RUN}@${domain}.local`, password: 'senha123', options: { data: { full_name: 'Zé Google' } } });
+  if (error) throw error;
+  created.push(data.user.id);
+  return { c, id: data.user.id };
+};
+const G1 = await googleUser('um');
+const G2 = await googleUser('dois');
+const g1 = await unameOf(G1.id), g2 = await unameOf(G2.id);
+ok(g1?.username === `ze.go.${RUN}` && g1.username_confirmed === false, 'sem usuário: gera do e-mail (minúsculo, inválido vira ponto) e não confirma', g1);
+ok(g2?.username === `ze.go.${RUN}2`, 'mesmo começo de e-mail: próximo número livre', g2);
+// Usuário escolhido já em uso no cadastro → cai no gerado, para confirmar.
+const D = await user('Dup', { username: A.username });
+const d = await unameOf(D.id);
+ok(d?.username !== A.username && d?.username_confirmed === false, 'cadastro com usuário em uso não quebra: gera outro e pede confirmação', d);
+
+ok((await anon.rpc('username_available', { u: A.username.toUpperCase() })).data === false, 'username_available: em uso (ignora maiúsculas)');
+ok((await anon.rpc('username_available', { u: `livre_${RUN}` })).data === true, 'username_available: livre');
+ok((await anon.rpc('username_available', { u: 'a..b' })).data === false, 'username_available: formato inválido = indisponível');
+
+const bad = await G1.c.rpc('set_username', { u: '1abc' });
+ok(bad.error?.code === '22023', 'set_username recusa formato inválido', bad.error);
+const taken = await G1.c.rpc('set_username', { u: A.username });
+ok(taken.error?.code === '23505', 'set_username recusa usuário em uso', taken.error);
+const mine = await G1.c.rpc('set_username', { u: `Zeca_${RUN}` });
+const g1b = await unameOf(G1.id);
+ok(!mine.error && g1b?.username === `zeca_${RUN}` && g1b.username_confirmed, 'set_username grava em minúsculas e confirma', mine.error ?? g1b);
+ok(!!(await anon.rpc('set_username', { u: `anon_${RUN}` })).error, 'visitante não chama set_username');
+
+// Buscar amigos: só o usuário exato.
+const exact = await anon.rpc('search_public_profiles', { q: ` @${A.username.toUpperCase()} ` });
+ok(exact.data?.length === 1 && exact.data[0].id === A.id && exact.data[0].username === A.username, 'busca acha pelo usuário exato (com @ e maiúsculas)', exact.error ?? exact.data);
+const partial = await anon.rpc('search_public_profiles', { q: A.username.slice(0, -1) });
+ok(partial.data?.length === 0, 'busca não acha por trecho do usuário', partial.data);
+const byName = await anon.rpc('search_public_profiles', { q: 'Zé Google' });
+ok(byName.data?.length === 0, 'busca não acha pelo nome antigo', byName.data);
+const pending = await anon.rpc('search_public_profiles', { q: g2.username });
+ok(pending.data?.length === 0, 'busca não acha quem ainda não confirmou o usuário', pending.data);
+const confirmed = await anon.rpc('search_public_profiles', { q: g1b.username });
+ok(confirmed.data?.length === 1 && confirmed.data[0].id === G1.id, 'busca acha depois de confirmar', confirmed.data);
+const authorRow = (await anon.rpc('list_user_public_recipes', { p_user: A.id })).data?.[0];
+ok(!authorRow || authorRow.author_name === A.username, 'autor das receitas públicas é o usuário', authorRow);
+
+// ------------------------------------------------------------ limpeza
+// Itens primeiro: a trava de subreceita (restrict) impediria apagar as receitas em cascata.
+const createdRecipes = (await admin.from('recipes').select('id').in('user_id', created)).data?.map((r) => r.id) ?? [];
+if (createdRecipes.length) await admin.from('recipe_items').delete().in('recipe_id', createdRecipes);
+for (const id of created) {
+  const { error } = await admin.auth.admin.deleteUser(id);
+  if (error) console.log('aviso: não apagou a conta de teste', id, error.message);
+}
 
 console.log(failures ? `\n${failures} falha(s)` : '\nTudo certo!');
 process.exit(failures ? 1 : 0);

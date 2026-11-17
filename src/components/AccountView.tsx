@@ -2,17 +2,19 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Image, Platform, ScrollView, Text, View } from 'react-native';
-import { ProfileView, userDisplayName } from '@/components/ProfileView';
+import { ProfileView } from '@/components/ProfileView';
 import { colors, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
+import { USERNAME_HINT, UsernameInput } from '@/components/UsernameDialog';
 import { Button, Field, Input, PasswordInput, Segmented, styles } from '@/components/ui';
 import { WelcomeModal } from '@/components/WelcomeModal';
 import { useAuth } from '@/context/AuthProvider';
 import { useData } from '@/context/DataProvider';
 import { useFormValidation } from '@/hooks/useFormValidation';
 import { signInWithGoogle } from '@/lib/googleAuth';
+import { isUsernameAvailable, USERNAME_TAKEN } from '@/lib/profile';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
-import { signInSchema, signUpSchema } from '@/lib/validation';
+import { normalizeUsername, signInSchema, signUpSchema } from '@/lib/validation';
 
 type Mode = 'signin' | 'signup';
 
@@ -77,13 +79,14 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
 
 function SignInForm({ onSignedIn, onSignedUp }: { onSignedIn: () => void; onSignedUp: (name: string) => void }) {
   const [mode, setMode] = useState<Mode>('signin');
-  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameTaken, setUsernameTaken] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  const form = useFormValidation(mode === 'signin' ? signInSchema : signUpSchema, { name, email, password });
+  const form = useFormValidation(mode === 'signin' ? signInSchema : signUpSchema, { username, email, password });
   const { errors } = form;
 
   const changeMode = (m: Mode) => {
@@ -120,14 +123,19 @@ function SignInForm({ onSignedIn, onSignedUp }: { onSignedIn: () => void; onSign
         toast.success('Você entrou na sua conta');
         onSignedIn();
       } else {
+        const chosen = normalizeUsername(username); // já validado pelo signUpSchema
+        if (!(await isUsernameAvailable(chosen))) {
+          setUsernameTaken(true);
+          return;
+        }
         const { data, error } = await supabase.auth.signUp({
           email: v.email,
           password: v.password,
-          options: { data: { display_name: ('name' in v && v.name) || undefined } },
+          options: { data: { username: chosen } },
         });
         if (error) throw error;
         if (data.session) {
-          onSignedUp(userDisplayName(data.session.user.user_metadata, v.email));
+          onSignedUp(chosen);
         } else {
           toast.success('Conta criada', 'Enviamos um link de confirmação para o seu e-mail. Depois de confirmar, entre com seu e-mail e senha.', {
             icon: 'mail-outline',
@@ -159,8 +167,15 @@ function SignInForm({ onSignedIn, onSignedUp }: { onSignedIn: () => void; onSign
       />
 
       {mode === 'signup' && (
-        <Field label="Nome" error={errors.name}>
-          <Input value={name} onChangeText={setName} placeholder="Digite seu nome" autoCapitalize="words" invalid={!!errors.name} maxLength={60} />
+        <Field label="Usuário" error={errors.username ?? (usernameTaken ? USERNAME_TAKEN : null)} tooltip={USERNAME_HINT}>
+          <UsernameInput
+            value={username}
+            onChangeText={(v) => {
+              setUsername(v);
+              setUsernameTaken(false);
+            }}
+            invalid={!!errors.username || usernameTaken}
+          />
         </Field>
       )}
       <Field label="E-mail" error={errors.email}>

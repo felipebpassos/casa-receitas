@@ -7,6 +7,7 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import { ConfirmHost } from '@/components/ConfirmDialog';
 import { ErrorView } from '@/components/ErrorState';
 import { ToastHost } from '@/components/Toast';
+import { UsernameGate } from '@/components/UsernameDialog';
 import { colors, fonts } from '@/components/theme';
 import { Button, styles } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/context/AuthProvider';
@@ -102,6 +103,7 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <DataProvider>
         <Gate />
+        <UsernameGate />
         <ConfirmHost />
         <ToastHost />
       </DataProvider>

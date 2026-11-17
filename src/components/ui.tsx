@@ -4,12 +4,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ActivityIndicator,
   Animated,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
+  type GestureResponderEvent,
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
@@ -91,26 +94,77 @@ export function IconButton({
   );
 }
 
+const TIP_WIDTH = 240;
+
+/**
+ * Ícone (?) que mostra uma explicação curta num balão ao tocar.
+ * O balão fica numa camada por cima de tudo (não some atrás dos campos); tocar fora fecha.
+ */
+export function InfoTip({ text, align = 'left' }: { text: string; align?: 'left' | 'right' }) {
+  const [anchor, setAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const { width: screenW } = useWindowDimensions();
+
+  // Mede o ícone tocado (mesmo jeito do DropdownMenu).
+  const open = (e: GestureResponderEvent) => {
+    const target = e.currentTarget;
+    if (typeof target === 'number') return;
+    target.measureInWindow((x, y, w, h) => setAnchor({ x, y, w, h }));
+  };
+  const close = () => setAnchor(null);
+
+  const left = anchor
+    ? Math.min(Math.max((align === 'right' ? anchor.x + anchor.w + 6 - TIP_WIDTH : anchor.x - 6), spacing.sm), screenW - TIP_WIDTH - spacing.sm)
+    : 0;
+
+  return (
+    <>
+      <Pressable
+        onPress={anchor ? close : open}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel="Ajuda"
+        accessibilityHint={text}
+      >
+        <Ionicons name="help-circle-outline" size={16} color={anchor ? colors.primary : colors.muted} />
+      </Pressable>
+      {anchor && (
+        <Modal visible transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
+          <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Fechar ajuda" />
+          <View pointerEvents="none" accessibilityLiveRegion="polite" style={[styles.tip, { top: anchor.y + anchor.h + 6, left }]}>
+            <Text style={styles.tipText}>{text}</Text>
+          </View>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export function Field({
   label,
   error,
   hint,
+  tooltip,
   optional,
   children,
 }: {
   label: string;
   error?: string | null;
   hint?: string;
+  /** Explicação no ícone (i) ao lado do rótulo, em vez de texto fixo embaixo. */
+  tooltip?: string;
   /** Mostra "(opcional)" ao lado do rótulo. */
   optional?: boolean;
   children: ReactNode;
 }) {
   return (
     <View style={{ gap: spacing.xs }}>
-      <Text style={[styles.label, !!error && { color: colors.danger }]}>
-        {label}
-        {optional && <Text style={{ textTransform: 'none', fontWeight: '400' }}> (opcional)</Text>}
-      </Text>
+      <View style={[styles.row, { gap: spacing.xs }]}>
+        <Text style={[styles.label, !!error && { color: colors.danger }]}>
+          {label}
+          {optional && <Text style={{ textTransform: 'none', fontWeight: '400' }}> (opcional)</Text>}
+        </Text>
+        {tooltip && <InfoTip text={tooltip} />}
+      </View>
       {children}
       {error ? <FieldError message={error} /> : hint ? <Text style={styles.muted}>{hint}</Text> : null}
     </View>
@@ -163,6 +217,7 @@ export function SearchBar({
   placeholder,
   onSubmit,
   autoFocus,
+  autoCapitalize,
   style,
 }: {
   value: string;
@@ -171,6 +226,7 @@ export function SearchBar({
   /** Tecla "buscar" do teclado. */
   onSubmit?: () => void;
   autoFocus?: boolean;
+  autoCapitalize?: TextInputProps['autoCapitalize'];
   style?: StyleProp<ViewStyle>;
 }) {
   return (
@@ -184,6 +240,7 @@ export function SearchBar({
         style={styles.searchInput}
         autoCorrect={false}
         autoFocus={autoFocus}
+        autoCapitalize={autoCapitalize}
         returnKeyType="search"
         onSubmitEditing={onSubmit}
       />
@@ -362,6 +419,20 @@ export const styles = StyleSheet.create({
   muted: { fontSize: 13, color: colors.muted },
   label: { fontSize: 13, fontWeight: '600', color: colors.muted, textTransform: 'uppercase' },
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  tip: {
+    position: 'absolute',
+    width: TIP_WIDTH,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.text,
+    borderRadius: radius.md,
+    shadowColor: '#3D342E',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  tipText: { fontSize: 13, lineHeight: 18, color: colors.background },
   button: {
     flexDirection: 'row',
     alignItems: 'center',

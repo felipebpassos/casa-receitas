@@ -26,27 +26,27 @@ export async function searchPublicRecipes(q: string, excludeUserId: string | nul
 
 export type PublicPersonSummary = { id: string; name: string | null; recipeCount: number };
 
-/** Busca de pessoas do Explorar: quem tem receitas ou preparos públicos. */
+/** Buscar amigos: só pelo nome de usuário exato. */
 export async function searchPublicProfiles(q: string, excludeUserId: string | null): Promise<PublicPersonSummary[]> {
   const { data, error, status } = await supabase.rpc('search_public_profiles', { q });
   if (error) throw serviceError({ ...error, status });
-  return (data as { id: string; display_name: string | null; recipe_count: number }[])
+  return (data as { id: string; username: string | null; recipe_count: number }[])
     .filter((p) => p.id !== excludeUserId)
-    .map((p) => ({ id: p.id, name: p.display_name, recipeCount: Number(p.recipe_count) }));
+    .map((p) => ({ id: p.id, name: p.username, recipeCount: Number(p.recipe_count) }));
 }
 
 export type PublicProfile = { id: string; name: string | null; recipes: PublicRecipeSummary[] };
 
-/** Perfil público: nome e todas as receitas e preparos públicos da pessoa. */
+/** Perfil público: usuário e todas as receitas e preparos públicos da pessoa. */
 export async function getPublicProfile(userId: string): Promise<PublicProfile | null> {
   const [profile, list] = await Promise.all([
-    supabase.from('profiles').select('display_name').eq('id', userId).maybeSingle(),
+    supabase.from('profiles').select('username').eq('id', userId).maybeSingle(),
     supabase.rpc('list_user_public_recipes', { p_user: userId }),
   ]);
   if (profile.error) throw serviceError({ ...profile.error, status: profile.status });
   if (list.error) throw serviceError({ ...list.error, status: list.status });
   if (!profile.data) return null;
-  return { id: userId, name: profile.data.display_name ?? null, recipes: (list.data as SummaryRow[]).map(toSummary) };
+  return { id: userId, name: profile.data.username ?? null, recipes: (list.data as SummaryRow[]).map(toSummary) };
 }
 
 /** Papel de admin da pessoa logada (false se não der para ler). */
@@ -97,9 +97,9 @@ export async function getPublicRecipeTree(id: string): Promise<PublicRecipeTree 
     for (const i of res.data) ingredientNames[i.id] = i.name;
   }
 
-  const profile = await supabase.from('profiles').select('display_name').eq('id', rootRow.user_id).maybeSingle();
+  const profile = await supabase.from('profiles').select('username').eq('id', rootRow.user_id).maybeSingle();
 
-  return { root, subs, ingredientNames, authorId: rootRow.user_id, authorName: profile.data?.display_name ?? null };
+  return { root, subs, ingredientNames, authorId: rootRow.user_id, authorName: profile.data?.username ?? null };
 }
 
 function subIdsOf(r: Recipe): string[] {
