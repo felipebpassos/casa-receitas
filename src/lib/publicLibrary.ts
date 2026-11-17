@@ -49,6 +49,18 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
   return { id: userId, name: profile.data.username ?? null, recipes: (list.data as SummaryRow[]).map(toSummary) };
 }
 
+/**
+ * Autor da receita original de uma cópia salva (id e usuário atual), para o link "Criado por".
+ * null se a original não estiver mais acessível (excluída ou deixou de ser pública).
+ */
+export async function getOriginAuthor(originRecipeId: string): Promise<{ id: string; username: string | null } | null> {
+  const rec = await supabase.from('recipes').select('user_id').eq('id', originRecipeId).maybeSingle();
+  if (rec.error) throw serviceError({ ...rec.error, status: rec.status });
+  if (!rec.data) return null;
+  const prof = await supabase.from('profiles').select('username').eq('id', rec.data.user_id).maybeSingle();
+  return { id: rec.data.user_id, username: prof.data?.username ?? null };
+}
+
 /** Papel de admin da pessoa logada (false se não der para ler). */
 export async function fetchIsAdmin(userId: string): Promise<boolean> {
   const { data, error } = await supabase.from('profiles').select('is_admin').eq('id', userId).maybeSingle();

@@ -16,7 +16,8 @@ import { Button, EmptyState, Loading, styles } from '@/components/ui';
 import { useData } from '@/context/DataProvider';
 import { formatDate, formatShort, weekdayName } from '@/lib/dates';
 import { UserFacingError } from '@/lib/errors';
-import { getPublicRecipeTree } from '@/lib/publicLibrary';
+import { getOriginAuthor, getPublicRecipeTree } from '@/lib/publicLibrary';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { parseRichText } from '@/lib/richText';
 import { formatQuantity, type NeedsContext } from '@/lib/shopping';
 import { PLATFORM_ICON, PLATFORM_LABEL, platformOf } from '@/lib/source';
@@ -85,6 +86,21 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
   // Receita salva de outra pessoa: fica na coleção, mas somente leitura.
   const isSavedCopy = !isPublicView && !!recipe.originRecipeId;
   const savedCopy = tree ? data.findCopyOf(tree.root.id) : undefined;
+
+  // Cópia salva: descobre o autor da original para o link do perfil (sem rede, fica só o nome).
+  const originId = isSavedCopy ? recipe.originRecipeId : null;
+  const [originAuthor, setOriginAuthor] = useState<{ forId: string; id: string; username: string | null } | null>(null);
+  useEffect(() => {
+    if (!originId || !isSupabaseConfigured) return;
+    let cancelled = false;
+    getOriginAuthor(originId)
+      .then((a) => !cancelled && a && setOriginAuthor({ forId: originId, ...a }))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [originId]);
+  const copyAuthor = originAuthor && originAuthor.forId === originId ? originAuthor : null;
 
   // Contexto do cálculo: a coleção, ou a árvore da receita pública.
   const { needsContext, ingredientName } = data;
@@ -160,13 +176,13 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
       },
     });
 
-  const author = (isPublicView ? tree.authorName : recipe.originAuthorName) ?? 'usuário';
+  const author = (isPublicView ? tree.authorName : (copyAuthor?.username ?? recipe.originAuthorName)) ?? 'usuário';
   const isOwn = !isPublicView && !isSavedCopy;
   // Receitas de outras pessoas só abrem se forem públicas. As próprias: como o dono escolheu.
   // (Estar na busca do Explorar é decisão interna e não aparece aqui.)
   const visibility: RecipeVisibility = !isOwn ? 'PUBLIC' : recipe.visibility;
   // Autor clicável: abre o perfil público (só quando se sabe quem é).
-  const authorId = isPublicView ? tree.authorId : null;
+  const authorId = isPublicView ? tree.authorId : (copyAuthor?.id ?? null);
   const ingredients = recipe.items.filter((i) => !i.subRecipeId);
   const subItems = recipe.items.filter((i) => i.subRecipeId);
   const hasPreparation = parseRichText(recipe.preparation).length > 0;
