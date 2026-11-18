@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   View,
   type GestureResponderEvent,
+  type ScrollViewInstance,
   type StyleProp,
   type TextInputProps,
   type ViewStyle,
@@ -354,7 +355,7 @@ export function Chip({
 
 /** Seletor horizontal de opções (ex.: unidades). */
 export function ChipSelect({ options, value, onChange }: { options: readonly string[]; value: string | null; onChange: (v: string) => void }) {
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<ScrollViewInstance>(null);
   // A opção selecionada vai para a frente; ao mudar a seleção, volta a rolagem ao início para ela ficar visível.
   const ordered = value && options.includes(value) ? [value, ...options.filter((o) => o !== value)] : options;
   useEffect(() => {
