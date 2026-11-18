@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode, type Ref } from 'react';
 import {
   Animated,
   Easing,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -89,6 +90,8 @@ export function Sheet({
   title,
   onClose,
   onBack,
+  closeButton = true,
+  swipeToClose = true,
   headerRight,
   footer,
   overlay,
@@ -106,6 +109,10 @@ export function Sheet({
   onClose: () => void;
   /** Mostra a seta de voltar no lugar do ícone do tipo. */
   onBack?: () => void;
+  /** Mostra o botão de fechar (X) no cabeçalho. */
+  closeButton?: boolean;
+  /** Arrastar o topo da folha (alça e cabeçalho) para baixo fecha. */
+  swipeToClose?: boolean;
   /** Ações à direita, antes do fechar. */
   headerRight?: ReactNode;
   footer?: ReactNode;
@@ -166,6 +173,24 @@ export function Sheet({
 
   const sheetHeight = height - insets.top - spacing.xl;
   const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [sheetHeight, 0] });
+
+  // Arrastar para fechar: move a própria animação de entrada (anim), assim o fundo escurecido
+  // acompanha o dedo e, ao soltar, o fechamento continua de onde a folha parou.
+  // (Durante o arrasto não há re-render, então recriar a cada render não interrompe o gesto.)
+  const pan = useMemo(() => {
+    const settle = () => Animated.spring(anim, { toValue: 1, useNativeDriver, friction: 10, tension: 70 }).start();
+    return PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => swipeToClose && g.dy > 6 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderGrant: () => anim.stopAnimation(),
+      onPanResponderMove: (_, g) => anim.setValue(1 - Math.max(0, g.dy) / sheetHeight),
+      onPanResponderRelease: (_, g) => {
+        // onClose precisa animar a folha até o fim (sheet.close/dismiss); senão, desligue swipeToClose.
+        if (g.dy > Math.min(140, sheetHeight * 0.25) || g.vy > 1.2) onClose();
+        else settle();
+      },
+      onPanResponderTerminate: settle,
+    });
+  }, [anim, onClose, swipeToClose, sheetHeight]);
   const stepStyle = {
     opacity: stepAnim,
     transform: [
@@ -193,7 +218,11 @@ export function Sheet({
           <View pointerEvents="none" style={[s.blob, { backgroundColor: blobLight, width: 70, height: 70, top: 28, right: 110, opacity: 0.6 }]} />
           <View pointerEvents="none" style={[s.blob, { backgroundColor: blobDark, width: 10, height: 10, top: 22, right: 86, opacity: 0.35 }]} />
 
-          <View style={s.handle} />
+          {/* Área de arrasto: alça + cabeçalho (os botões continuam recebendo toques). */}
+          <View {...pan.panHandlers}>
+          <View style={s.handleArea}>
+            <View style={s.handle} />
+          </View>
           <View style={s.header}>
             {onBack ? (
               <SheetButton icon="arrow-back" label="Voltar" onPress={onBack} />
@@ -212,7 +241,8 @@ export function Sheet({
               </Text>
             </Animated.View>
             {headerRight}
-            <SheetButton icon="close" label="Fechar" onPress={onClose} />
+            {closeButton && <SheetButton icon="close" label="Fechar" onPress={onClose} />}
+          </View>
           </View>
 
           <ScrollView
@@ -224,7 +254,7 @@ export function Sheet({
             <Animated.View style={[{ flexGrow: 1, gap: spacing.lg }, stepStyle]}>{children}</Animated.View>
           </ScrollView>
 
-          {footer ? <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, spacing.md) }]}>{footer}</View> : null}
+          {footer ? <View style={[s.footer, { paddingBottom: insets.bottom + spacing.md }]}>{footer}</View> : null}
           {overlay}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -251,7 +281,8 @@ const s = StyleSheet.create({
     elevation: 24,
   },
   blob: { position: 'absolute', borderRadius: radius.pill },
-  handle: { alignSelf: 'center', width: 40, height: 5, borderRadius: radius.pill, backgroundColor: colors.border, marginTop: spacing.sm },
+  handleArea: { alignItems: 'center', paddingTop: spacing.sm },
+  handle: { width: 40, height: 5, borderRadius: radius.pill, backgroundColor: colors.border },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { confirm } from '@/components/ConfirmDialog';
 import { DayPicker } from '@/components/DayPicker';
 import { DropdownMenu } from '@/components/DropdownMenu';
@@ -21,7 +22,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { parseRichText } from '@/lib/richText';
 import { formatQuantity, type NeedsContext } from '@/lib/shopping';
 import { PLATFORM_ICON, PLATFORM_LABEL, platformOf } from '@/lib/source';
-import type { PublicRecipeTree, Recipe, RecipeVisibility } from '@/lib/types';
+import type { PublicRecipeTree, Recipe } from '@/lib/types';
 
 export default function RecipeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -178,9 +179,6 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
 
   const author = (isPublicView ? tree.authorName : (copyAuthor?.username ?? recipe.originAuthorName)) ?? 'usuário';
   const isOwn = !isPublicView && !isSavedCopy;
-  // Receitas de outras pessoas só abrem se forem públicas. As próprias: como o dono escolheu.
-  // (Estar na busca do Explorar é decisão interna e não aparece aqui.)
-  const visibility: RecipeVisibility = !isOwn ? 'PUBLIC' : recipe.visibility;
   // Autor clicável: abre o perfil público (só quando se sabe quem é).
   const authorId = isPublicView ? tree.authorId : (copyAuthor?.id ?? null);
   const ingredients = recipe.items.filter((i) => !i.subRecipeId);
@@ -192,6 +190,14 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
   const openSource = () =>
     Linking.openURL(recipe.sourceUrl!).catch(() => toast.error(new UserFacingError('Não foi possível abrir este link.', 'Link inválido')));
 
+  // Compartilha como texto (cabe em qualquer app). Link para abrir no app só se a receita for pública:
+  // privadas não abrem para outras pessoas. Cópia salva aponta para a original.
+  const share = () => {
+    const linkId = isOwn ? (recipe.visibility === 'PUBLIC' ? recipe.id : null) : isSavedCopy ? recipe.originRecipeId : recipe.id;
+    const message = recipeShareText(recipe, ctx, linkId ? Linking.createURL(`/recipe/${linkId}`) : null);
+    Share.share({ message, title: recipe.name }).catch(() => undefined);
+  };
+
   const headerRight = isOwn ? (
     <DropdownMenu
       items={[
@@ -200,20 +206,24 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
           icon: 'create-outline',
           onPress: () => router.push({ pathname: '/recipe/form', params: { id: recipe.id } }),
         },
+        { label: 'Compartilhar', icon: 'share-social-outline', onPress: share },
         { label: 'Excluir', icon: 'trash-outline', destructive: true, onPress: confirmDelete },
       ]}
       trigger={(open) => <SheetButton icon="ellipsis-vertical" label="Mais opções" onPress={open} />}
     />
   ) : (
-    <SheetButton
-      icon={isSaved ? 'bookmark' : 'bookmark-outline'}
-      label={isSaved ? 'Remover do caderno' : 'Salvar no caderno'}
-      active={isSaved}
-      disabled={busy}
-      onPress={isSaved ? confirmRemove : save}
-    >
-      {busy ? <ActivityIndicator color={colors.primary} size="small" /> : undefined}
-    </SheetButton>
+    <>
+      <SheetButton icon="share-social-outline" label="Compartilhar receita" onPress={share} />
+      <SheetButton
+        icon={isSaved ? 'bookmark' : 'bookmark-outline'}
+        label={isSaved ? 'Remover do caderno' : 'Salvar no caderno'}
+        active={isSaved}
+        disabled={busy}
+        onPress={isSaved ? confirmRemove : save}
+      >
+        {busy ? <ActivityIndicator color={colors.primary} size="small" /> : undefined}
+      </SheetButton>
+    </>
   );
 
   return (
@@ -223,6 +233,7 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
         kind={recipe.kind}
         title={recipe.name}
         onClose={sheet.dismiss}
+        closeButton={false}
         headerRight={headerRight}
         footer={
           <>
@@ -238,13 +249,8 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
           </>
         }
       >
-        <RecipeMeta
-          author={isOwn ? null : author}
-          authorId={authorId}
-          visibility={visibility}
-          date={`Em ${formatDate(recipe.createdAt)}`}
-        />
-        {/* Divisória entre as informações (autor, data, visibilidade) e o conteúdo */}
+        <RecipeMeta author={isOwn ? null : author} authorId={authorId} date={`Em ${formatDate(recipe.createdAt)}`} />
+        {/* Divisória entre as informações (autor, data) e o conteúdo */}
         <View style={styles.separator} />
         {recipe.description ? (
           <Section title="Descrição">
@@ -324,27 +330,33 @@ function RecipeView({ recipe, tree, sheet }: { recipe: Recipe; tree?: PublicReci
   );
 }
 
-const VISIBILITY: Record<RecipeVisibility, { icon: ComponentProps<typeof Ionicons>['name']; label: string; color: string }> = {
-  PRIVATE: { icon: 'lock-closed-outline', label: 'Privada', color: colors.muted },
-  PUBLIC: { icon: 'globe-outline', label: 'Pública', color: colors.muted },
-};
+/** Receita em texto puro para compartilhar: nome, descrição, ingredientes, preparo e link (se houver). */
+function recipeShareText(recipe: Recipe, ctx: NeedsContext, link: string | null): string {
+  const parts: string[] = [`🍽️ ${recipe.name}`];
+  if (recipe.description?.trim()) parts.push(recipe.description.trim());
+
+  const items = recipe.items.map((item) => {
+    const name = item.subRecipeId ? (ctx.getRecipe(item.subRecipeId)?.name ?? 'Preparo') : ctx.ingredientName(item.ingredientId!);
+    const qty = formatQuantity(item.quantity, item.unit);
+    return `• ${name}${qty ? ` — ${qty}` : ''}`;
+  });
+  if (items.length) parts.push(['Ingredientes:', ...items].join('\n'));
+
+  const spansText = (spans: { text: string }[]) => spans.map((s) => s.text).join('');
+  const prep = parseRichText(recipe.preparation).map((b) =>
+    b.type === 'p' ? spansText(b.spans) : b.items.map((it, i) => `${b.type === 'ol' ? `${i + 1}.` : '•'} ${spansText(it)}`).join('\n'),
+  );
+  if (prep.length) parts.push(['Modo de preparo:', ...prep].join('\n'));
+
+  if (link) parts.push(`Abrir no app: ${link}`);
+  return parts.join('\n\n');
+}
 
 /**
  * Linha de informações no topo do conteúdo: autoria ("Criado por mim" ou "Criado por fulano", que abre
- * o perfil público), data em que entrou no caderno e visibilidade (Privada / Pública).
+ * o perfil público) e data em que entrou no caderno.
  */
-function RecipeMeta({
-  author,
-  authorId,
-  visibility,
-  date,
-}: {
-  author: string | null;
-  authorId: string | null;
-  visibility: RecipeVisibility;
-  date: string;
-}) {
-  const v = VISIBILITY[visibility];
+function RecipeMeta({ author, authorId, date }: { author: string | null; authorId: string | null; date: string }) {
   const authorLabel = `Criado por ${author ?? 'mim'}`;
   return (
     <View style={[styles.row, { flexWrap: 'wrap', columnGap: spacing.lg, rowGap: spacing.xs }]}>
@@ -379,10 +391,6 @@ function RecipeMeta({
       <View style={[styles.row, local.meta]} accessibilityLabel={date}>
         <Ionicons name="calendar-outline" size={16} color={colors.muted} />
         <Text style={local.metaText}>{date}</Text>
-      </View>
-      <View style={[styles.row, local.meta]}>
-        <Ionicons name={v.icon} size={16} color={v.color} />
-        <Text style={[local.metaText, { color: v.color }]}>{v.label}</Text>
       </View>
     </View>
   );

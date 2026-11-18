@@ -411,6 +411,7 @@ export function RecipeForm({ existing, initialKind }: { existing?: Recipe; initi
         shakeSignal={shakeSignal}
         onBack={step > 1 && !celebration ? () => goTo((step - 1) as Step) : undefined}
         onClose={celebration ? () => undefined : close}
+        swipeToClose={!celebration}
         scrollRef={scrollRef}
         footer={
           step < 3 ? (
