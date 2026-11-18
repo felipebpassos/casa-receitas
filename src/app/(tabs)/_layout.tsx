@@ -46,6 +46,8 @@ export default function TabLayout() {
         options={{
           // Sem conta, a aba é o convite para entrar; com conta, é o perfil.
           title: userId ? 'Perfil' : 'Entrar',
+          // Com conta, a capa laranja do perfil ocupa a área da barra de status.
+          sceneStyle: { backgroundColor: colors.background, paddingTop: userId ? 0 : insets.top },
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'person-circle' : 'person-circle-outline'} size={size} color={color as string} />
           ),

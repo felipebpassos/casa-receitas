@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { initials } from '@/components/ProfileView';
+import { initials } from '@/components/ProfileHero';
 import { colors, fonts, radius, spacing } from '@/components/theme';
 import { styles } from '@/components/ui';
 import type { PublicPersonSummary } from '@/lib/publicLibrary';

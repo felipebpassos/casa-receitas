@@ -1,10 +1,12 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useIsFocused } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useCallback, useMemo, useState, type ComponentProps } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { confirm } from '@/components/ConfirmDialog';
-import { colors, fonts, radius, spacing } from '@/components/theme';
+import { ProfileHero } from '@/components/ProfileHero';
+import { colors, radius, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
 import { Button, IconButton, styles as ui } from '@/components/ui';
 import { UsernameDialog } from '@/components/UsernameDialog';
@@ -14,14 +16,12 @@ import { getFollowStats, type FollowStats } from '@/lib/follows';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-/** Letra do avatar: a primeira letra do usuário. */
-export function initials(name: string) {
-  return (name.match(/[a-z0-9]/i)?.[0] ?? '?').toUpperCase();
-}
-
-/** Perfil da pessoa logada: identidade, números do caderno, atalhos e sair. */
-export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
-  const { session, email, username, signOut } = useAuth();
+/**
+ * Perfil da pessoa logada: capa com nome e números, atalhos e sair.
+ * `topInset`: a capa vai até o topo da tela (aba Perfil) e deixa esse espaço para a barra de status.
+ */
+export function ProfileView({ onSignedOut, topInset }: { onSignedOut?: () => void; topInset?: number }) {
+  const { session, username, signOut } = useAuth();
   const { recipes } = useData();
   const [editingUsername, setEditingUsername] = useState(false);
   const user = session?.user;
@@ -69,37 +69,30 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       },
     });
 
+  // Na aba, a capa vai até o topo: a barra de status fica clara sobre o laranja.
+  const edgeToEdge = topInset != null;
+  const isFocused = useIsFocused();
+
   return (
-    <ScrollView contentContainerStyle={s.container}>
-      {/* Identidade */}
-      <View style={s.hero}>
-        <View style={s.avatarRing}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={s.avatar} accessibilityIgnoresInvertColors />
-          ) : (
-            <View style={[s.avatar, s.avatarFallback]}>
-              <Text style={s.avatarText}>{initials(name)}</Text>
-            </View>
-          )}
-        </View>
-        <View style={s.nameRow}>
-          <Text style={s.name} numberOfLines={1}>
-            {name}
-          </Text>
-          {username && <IconButton name="create-outline" label="Editar nome de usuário" size={20} color={colors.primary} onPress={() => setEditingUsername(true)} />}
-        </View>
-        <Text style={ui.muted} numberOfLines={1}>
-          {email}
-        </Text>
-      </View>
+    <ScrollView contentContainerStyle={{ paddingBottom: spacing.xl }}>
+      {edgeToEdge && isFocused && <StatusBar style="light" />}
 
-      {/* Números */}
-      <View style={s.stats}>
-        <Stat icon="globe-outline" value={published} label={published === 1 ? 'publicada' : 'publicadas'} onPress={openPublicProfile} />
-        <Stat icon="people-outline" value={followers} label={followers === 1 ? 'seguidor' : 'seguidores'} onPress={() => openFollows('followers')} />
-        <Stat icon="person-add-outline" value={following} label="seguindo" onPress={() => openFollows('following')} />
-      </View>
+      {/* Capa (mesma do perfil público) */}
+      <ProfileHero
+        name={name}
+        avatarUrl={avatarUrl}
+        paddingTop={(topInset ?? 0) + spacing.xl}
+        nameAccessory={
+          username && <IconButton name="create-outline" label="Editar nome de usuário" size={22} color={colors.onPrimary} onPress={() => setEditingUsername(true)} />
+        }
+        facts={[
+          { label: `${published} ${published === 1 ? 'publicação' : 'publicações'}`, onPress: openPublicProfile },
+          { label: `${followers} ${followers === 1 ? 'seguidor' : 'seguidores'}`, onPress: () => openFollows('followers') },
+          { label: `${following} seguindo`, onPress: () => openFollows('following') },
+        ]}
+      />
 
+      <View style={s.body}>
       {/* Atalhos */}
       <View>
         <Text style={[ui.label, s.sectionLabel]}>Atalhos</Text>
@@ -116,21 +109,10 @@ export function ProfileView({ onSignedOut }: { onSignedOut?: () => void }) {
       <Text style={[ui.muted, { textAlign: 'center' }]}>
         {memberSince ? `Conta criada em ${memberSince} · ` : ''}Versão {Constants.expoConfig?.version ?? '—'}
       </Text>
+      </View>
 
       {editingUsername && username && <UsernameDialog initial={username} onCancel={() => setEditingUsername(false)} />}
     </ScrollView>
-  );
-}
-
-function Stat({ icon, value, label, onPress }: { icon: IconName; value: number; label: string; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [s.stat, pressed && { opacity: 0.7 }]} accessibilityLabel={`${value} ${label}`}>
-      <Ionicons name={icon} size={18} color={colors.primary} />
-      <Text style={s.statValue}>{value}</Text>
-      <Text style={s.statLabel} numberOfLines={1}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -150,28 +132,7 @@ function MenuRow({ icon, title, subtitle, onPress, last }: { icon: IconName; tit
 }
 
 const s = StyleSheet.create({
-  container: { padding: spacing.xl, gap: spacing.xl },
-  hero: { alignItems: 'center', gap: 2 },
-  avatarRing: { padding: 4, borderRadius: radius.pill, borderWidth: 2, borderColor: colors.primaryLight, marginBottom: spacing.sm },
-  avatar: { width: 88, height: 88, borderRadius: radius.pill },
-  avatarFallback: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontFamily: fonts.serifBold, fontSize: 32, color: colors.onPrimary },
-  nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, maxWidth: '100%' },
-  name: { fontFamily: fonts.serifBold, fontSize: 24, color: colors.text, flexShrink: 1 },
-  stats: { flexDirection: 'row', gap: spacing.sm },
-  stat: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 2,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  statValue: { fontFamily: fonts.serifBold, fontSize: 24, color: colors.text },
-  statLabel: { fontSize: 12, color: colors.muted },
-  notice: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.warningLight, borderColor: colors.warningLight },
+  body: { paddingHorizontal: spacing.xl, paddingTop: spacing.xl, gap: spacing.xl },
   sectionLabel: { marginBottom: spacing.sm, marginLeft: spacing.xs },
   menu: { backgroundColor: colors.card, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, overflow: 'hidden' },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.md, paddingHorizontal: spacing.lg },

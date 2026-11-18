@@ -23,7 +23,7 @@ type Mode = 'signin' | 'signup';
  * Com `onDone` (modal aberto no meio de uma tarefa): entrar/sair volta para onde a pessoa estava.
  * Sem `onDone` (aba Perfil): entrar leva para Receitas; criar conta mostra as boas-vindas.
  */
-export function AccountView({ onDone }: { onDone?: () => void }) {
+export function AccountView({ onDone, topInset }: { onDone?: () => void; topInset?: number }) {
   const { userId } = useAuth();
   const { recipes } = useData();
   // Fica aqui (e não no formulário) porque, com a sessão criada, o formulário dá lugar ao perfil.
@@ -71,7 +71,7 @@ export function AccountView({ onDone }: { onDone?: () => void }) {
 
   return (
     <>
-      {userId ? <ProfileView onSignedOut={onDone} /> : <SignInForm onSignedIn={afterSignIn} onSignedUp={setWelcomeName} />}
+      {userId ? <ProfileView onSignedOut={onDone} topInset={topInset} /> : <SignInForm onSignedIn={afterSignIn} onSignedUp={setWelcomeName} />}
       {welcome}
     </>
   );

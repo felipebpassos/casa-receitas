@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ErrorView } from '@/components/ErrorState';
-import { initials } from '@/components/ProfileView';
+import { PillButton, pillTextStyle, ProfileBand, ProfileHero } from '@/components/ProfileHero';
 import { RecipeListItem } from '@/components/RecipeListItem';
 import { colors, fonts, radius, spacing } from '@/components/theme';
 import { toast } from '@/components/Toast';
@@ -14,11 +14,6 @@ import { useAuth } from '@/context/AuthProvider';
 import { follow, getFollowStats, unfollow, type FollowStats } from '@/lib/follows';
 import { haptic } from '@/lib/haptics';
 import { getPublicProfile, type PublicProfile } from '@/lib/publicLibrary';
-
-/** Laranja da marca escurecendo para baixo (capa do perfil). */
-const HERO_GRADIENT = 'linear-gradient(180deg, #D97A52 0%, #C8603A 55%, #A84D2D 100%)';
-/** Continuação suave da capa sobre o fundo, atrás do botão Seguir. */
-const BAND_GRADIENT = 'linear-gradient(180deg, rgba(168, 77, 45, 0.16) 0%, rgba(249, 245, 234, 0) 100%)';
 
 const goBack = () => (router.canGoBack() ? router.back() : router.replace('/explorar'));
 
@@ -113,7 +108,9 @@ export default function PublicProfileScreen() {
       `${count} ${count === 1 ? 'publicação' : 'publicações'}`,
       stats && `${stats.followers} ${stats.followers === 1 ? 'seguidor' : 'seguidores'}`,
       stats?.following != null && `${stats.following} seguindo`,
-    ].filter(Boolean);
+    ]
+      .filter((f): f is string => !!f)
+      .map((label) => ({ label }));
 
     content = (
       <FlatList
@@ -126,28 +123,16 @@ export default function PublicProfileScreen() {
         }
         ListHeaderComponent={
           <>
-            {/* Capa */}
-            <View style={[s.hero, { paddingTop: insets.top + 56 }]}>
-              <View style={s.avatar}>
-                <Text style={s.avatarText}>{initials(name)}</Text>
-              </View>
-              <View style={s.heroText}>
-                <Text style={s.kicker}>Perfil</Text>
-                <Text style={s.name} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
-                  {name}
-                </Text>
-                <Text style={s.facts}>{facts.join('  •  ')}</Text>
-              </View>
-            </View>
+            <ProfileHero name={name} facts={facts} paddingTop={insets.top + 56} />
 
             {/* Ações */}
-            <View style={s.band}>
+            <ProfileBand>
               {isMe ? (
                 <Text style={styles.muted}>É assim que outras pessoas veem o seu perfil.</Text>
               ) : (
                 (stats || !userId) && <FollowButton following={!!stats?.isFollowing} busy={toggling} onPress={toggleFollow} />
               )}
-            </View>
+            </ProfileBand>
 
             {count > 0 && <Text style={s.sectionTitle}>Receitas publicadas</Text>}
           </>
@@ -194,73 +179,26 @@ export default function PublicProfileScreen() {
 /** Botão em pílula com contorno; "Seguindo" fica preenchido de leve. */
 function FollowButton({ following, busy, onPress }: { following: boolean; busy: boolean; onPress: () => void }) {
   return (
-    <Pressable
+    <PillButton
       onPress={onPress}
       disabled={busy}
-      accessibilityRole="button"
+      filled={following}
       accessibilityState={{ selected: following, busy }}
       accessibilityLabel={following ? 'Seguindo. Toque para deixar de seguir' : 'Seguir'}
-      style={({ pressed }) => [s.follow, following && s.following, pressed && { transform: [{ scale: 0.97 }], opacity: 0.85 }]}
     >
       {busy ? (
         <ActivityIndicator size="small" color={colors.text} />
       ) : (
         <>
           {following && <Ionicons name="checkmark" size={16} color={colors.text} />}
-          <Text style={s.followText}>{following ? 'Seguindo' : 'Seguir'}</Text>
+          <Text style={pillTextStyle}>{following ? 'Seguindo' : 'Seguir'}</Text>
         </>
       )}
-    </Pressable>
+    </PillButton>
   );
 }
 
 const s = StyleSheet.create({
-  hero: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl,
-    backgroundColor: colors.primary,
-    backgroundImage: HERO_GRADIENT,
-  },
-  avatar: {
-    width: 104,
-    height: 104,
-    borderRadius: radius.pill,
-    backgroundColor: colors.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 8px 24px rgba(61, 52, 46, 0.35)',
-  },
-  avatarText: { fontFamily: fonts.serifBold, fontSize: 44, color: colors.primary },
-  heroText: { flex: 1, gap: 2, paddingBottom: spacing.xs },
-  kicker: { fontSize: 13, fontWeight: '600', color: colors.onPrimary, opacity: 0.9 },
-  name: { fontFamily: fonts.serifBold, fontSize: 34, lineHeight: 42, color: colors.onPrimary },
-  facts: { fontSize: 13, fontWeight: '500', color: colors.onPrimary, opacity: 0.85 },
-  band: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.xl,
-    backgroundImage: BAND_GRADIENT,
-  },
-  follow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    minWidth: 104,
-    height: 36,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.muted,
-  },
-  following: { backgroundColor: colors.surface, borderColor: colors.border },
-  followText: { fontSize: 14, fontWeight: '700', color: colors.text },
   sectionTitle: { fontFamily: fonts.serifSemiBold, fontSize: 18, color: colors.text, paddingHorizontal: spacing.lg, marginBottom: spacing.md },
   back: {
     position: 'absolute',
