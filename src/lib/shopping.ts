@@ -77,6 +77,23 @@ export function toBaseUnit(quantity: number | null, unit: string | null): { quan
 /** Quantidades exibidas como fração (0,5 → "1/2"). */
 const FRACTIONS: Record<number, string> = { 0.5: '1/2', 0.25: '1/4' };
 
+/** Plural das unidades por extenso (g, kg, ml, l e "a gosto" não flexionam). */
+const UNIT_PLURALS: Record<string, string> = {
+  unidade: 'unidades',
+  'colher (sopa)': 'colheres (sopa)',
+  'colher (chá)': 'colheres (chá)',
+  xícara: 'xícaras',
+  pacote: 'pacotes',
+  lata: 'latas',
+  caixa: 'caixas',
+  dente: 'dentes',
+  maço: 'maços',
+  pitada: 'pitadas',
+};
+
+/** Em português o plural começa em 2 ("1,5 xícara", "2 xícaras"). */
+const pluralizeUnit = (unit: string, quantity: number) => (quantity >= 2 ? (UNIT_PLURALS[unit] ?? unit) : unit);
+
 /** 1500 g → "1,5 kg"; 2000 ml → "2 l"; 0,5 → "1/2"; quantidade nula → "" (ou "a gosto"). */
 export function formatQuantity(quantity: number | null, unit: string | null): string {
   const u = normalizeUnit(unit);
@@ -91,7 +108,7 @@ export function formatQuantity(quantity: number | null, unit: string | null): st
     shown = 'l';
   }
   const num = FRACTIONS[q] ?? (Number.isInteger(q) ? String(q) : q.toFixed(2).replace(/\.?0+$/, '').replace('.', ','));
-  return shown ? `${num} ${shown}` : num;
+  return shown ? `${num} ${pluralizeUnit(shown, q)}` : num;
 }
 
 export function normalizeName(value: string): string {

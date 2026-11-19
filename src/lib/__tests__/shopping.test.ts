@@ -96,6 +96,15 @@ test('formatQuantity mostra 0,5 e 0,25 como fração', () => {
   assert.equal(formatQuantity(0.75, 'unidade'), '0,75 unidade');
 });
 
+test('formatQuantity flexiona a unidade no plural a partir de 2', () => {
+  assert.equal(formatQuantity(1, 'dente'), '1 dente');
+  assert.equal(formatQuantity(2, 'dente'), '2 dentes');
+  assert.equal(formatQuantity(3, 'colher (sopa)'), '3 colheres (sopa)');
+  assert.equal(formatQuantity(2.5, 'xícara'), '2,5 xícaras');
+  assert.equal(formatQuantity(500, 'g'), '500 g');
+  assert.equal(formatQuantity(2000, 'ml'), '2 l');
+});
+
 test('mesma receita planejada duas vezes conta duas vezes', () => {
   const groups = computeGroups(['lasanha', 'lasanha'], ctx(all));
   assert.equal(qty(group(groups, 'lasanha'), 'massa'), 2);
@@ -147,7 +156,7 @@ test('texto para compartilhar: só o que não foi riscado, por receita/preparo',
       { id: 'e2', name: 'Esponja', quantity: null, unit: null, checked: true },
     ],
   });
-  assert.equal(text, 'Lista\n\nLasanha\n• Massa de lasanha 1 pacote\n\nOutros itens\n• Detergente 2 unidade');
+  assert.equal(text, 'Lista\n\nLasanha\n• Massa de lasanha 1 pacote\n\nOutros itens\n• Detergente 2 unidades');
   assert.equal(shoppingListText('Lista', [], { checked: [], extras: [] }), '');
 });
 
