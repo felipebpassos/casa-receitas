@@ -13,7 +13,7 @@ import { computeGroups, countItems, normalizeSearch } from '@/lib/shopping';
 import type { Recipe } from '@/lib/types';
 
 export default function RecipesScreen() {
-  // Atalhos de outras telas: ?tab=mine / ?tab=saved jÃ¡ abrem filtrando pela origem;
+  // Atalhos de outras telas: ?tab=mine / ?tab=saved já abrem filtrando pela origem;
   // ?tab=new abre a escolha de Receita/Preparo para cadastrar.
   const { tab: tabParam } = useLocalSearchParams<{ tab?: string }>();
   const requestedOrigin = tabParam === 'mine' ? 'MINE' : tabParam === 'saved' ? 'SAVED' : null;
@@ -29,13 +29,13 @@ export default function RecipesScreen() {
     if (requestedOrigin) setFilters((f) => ({ ...f, origin: requestedOrigin }));
     if (tabParam === 'new') setCreating(true);
   }
-  // Limpa o parÃ¢metro para que o mesmo atalho funcione de novo depois.
+  // Limpa o parâmetro para que o mesmo atalho funcione de novo depois.
   useEffect(() => {
     if (tabParam) router.setParams({ tab: undefined });
   }, [tabParam]);
   // Ao trocar para outra aba do menu, desfaz o filtro de origem (vindo de um atalho, por exemplo):
-  // quem retorna vÃª o caderno inteiro. Feito na saÃ­da para nÃ£o sobrescrever um atalho como ?tab=saved.
-  // Abrir uma receita por cima nÃ£o conta: a aba ativa continua sendo esta.
+  // quem retorna vê o caderno inteiro. Feito na saí­da para não sobrescrever um atalho como ?tab=saved.
+  // Abrir uma receita por cima não conta: a aba ativa continua sendo esta.
   const navigation = useNavigation();
   useFocusEffect(
     useCallback(
@@ -102,7 +102,7 @@ export default function RecipesScreen() {
   );
 }
 
-/** Caderno inteiro (prÃ³prias e salvas, em ordem alfabÃ©tica) com busca e filtros aplicados. */
+/** Caderno inteiro (próprias e salvas, em ordem alfabética) com busca e filtros aplicados. */
 function useFilteredRecipes(query: string, { kind, origin }: RecipeFilters) {
   const { recipes, ingredientName, getRecipe } = useData();
   return useMemo(() => {
@@ -145,7 +145,7 @@ function Empty({ query, filters: { kind, origin } }: { query: string; filters: R
       />
     );
   }
-  return <EmptyState icon="book-outline" title="Seu caderno estÃ¡ vazio" subtitle="Toque em + para cadastrar uma receita ou salve receitas de outras pessoas em Explorar." />;
+  return <EmptyState icon="book-outline" title="Seu caderno está vazio" subtitle="Toque em + para cadastrar uma receita ou salve receitas de outras pessoas em Explorar." />;
 }
 
 function RecipeCard({ recipe }: { recipe: Recipe }) {
@@ -157,7 +157,7 @@ function RecipeCard({ recipe }: { recipe: Recipe }) {
       kind={recipe.kind}
       name={recipe.name}
       itemCount={itemCount}
-      author={recipe.originRecipeId ? (recipe.originAuthorName ?? 'usuÃ¡rio') : null}
+      author={recipe.originRecipeId ? (recipe.originAuthorName ?? 'usuário') : null}
     />
   );
 }
